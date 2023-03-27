@@ -18,7 +18,8 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Commands:
   Run `dfb <command> -h` for help
@@ -27,13 +28,17 @@ Commands:
     init                write a new config file.
     backup              Run a backup
     restore-dir (restore)
-                        Restore a directory (including the root directory) to a specified directory
+                        Restore a directory (including the root directory) to
+                        a specified directory
     restore-file        Restore a file to a specified location or file
-    ls                  Cleanly list files and directories at the optionally specified time
-    snapshot            Recursivly list the files in line-delineated JSON at the optionally specified time
+    ls                  Cleanly list files and directories at the optionally
+                        specified time
+    snapshot            Recursivly list the files in line-delineated JSON at
+                        the optionally specified time
     versions            Show all versions of a file.
-    timestamps          List all timestamps in the backup. Note that this will include ones that were nominally
-                        pruned but without all files
+    timestamps          List all timestamps in the backup. Note that this will
+                        include ones that were nominally pruned but without
+                        all files
     prune               Prune older versions of the files
 
 ```
@@ -42,7 +47,8 @@ Commands:
 
 
 ```text
-usage: dfb init [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--force-overwrite] config-file
+usage: dfb init [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--force-overwrite]
+                config-file
 
 positional arguments:
   config-file           Specify a config file destination
@@ -57,7 +63,8 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 ```
 
@@ -65,15 +72,21 @@ Global Settings:
 
 
 ```text
-usage: dfb backup [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file [-o 'OPTION = VALUE'] [--refresh] [-n]
-                  [-i] [--shell-script DEST or -] [--subdir SUBDIR]
+usage: dfb backup [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                  [-o 'OPTION = VALUE'] [--refresh] [-n] [-i]
+                  [--shell-script DEST or -] [--subdir SUBDIR]
 
 optional arguments:
   -h, --help            show this help message and exit
-  --subdir SUBDIR       Backup only a subset of the source. WARNING: rclone will list the source with the
-                        subdir as the remote. Filters that assume a path and/or are anchored to the root (i.e.
-                        start with '/'), will NOT be applied correctly. Use '--dry-run' or '--interactive' to
-                        verify! The variable 'subdir' is also defined in the config file which can be used with
+  --subdir SUBDIR       Backup only a subset of the source. Move tracking
+                        (referencing) will not work *outside* the subdir. It
+                        will look like a delete and then a later backup.
+                        WARNING: rclone will list the source with the subdir
+                        as the remote. Filters that assume a path and/or are
+                        anchored to the root (i.e. start with '/'), will NOT
+                        be applied correctly. Use '--dry-run' or '--
+                        interactive' to verify! The variable 'subdir' is also
+                        defined in the config file which can be used with
                         conditionals. ⚠⚠⚠USE WITH CAUTION!⚠⚠⚠
 
 Global Settings:
@@ -82,22 +95,30 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Config & Cache Settings:
-  --config file         (Required) Specify config file. Can also be specified via the $DFB_CONFIG_FILE
-                        environment variable or is implied if executing the config file itself.
+  --config file         (Required) Specify config file. Can also be specified
+                        via the $DFB_CONFIG_FILE environment variable or is
+                        implied if executing the config file itself.
                         $DFB_CONFIG_FILE is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
-                        Override any config option for this call only. Must be specified as 'OPTION = VALUE',
-                        where VALUE should be proper Python (e.g. quoted strings). Example: --override "compare
-                        = 'mtime'". Override text is evaluated before *and* after the config file however, the
-                        variables 'pre' and 'post' are defined as True or False if it is before or after the
-                        config file. These can be used with conditionals to control overrides. See readme for
-                        details.Can specify multiple times. There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote destination. This can be much
-                        slower as it must list all versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb backup (e.g., manual pruning). When used, will use
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be
+                        proper Python (e.g. quoted strings). Example:
+                        --override "compare = 'mtime'". Override text is
+                        evaluated before *and* after the config file however,
+                        the variables 'pre' and 'post' are defined as True or
+                        False if it is before or after the config file. These
+                        can be used with conditionals to control overrides.
+                        See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+  --refresh             Refresh the local cache with a real listing of the
+                        remote destination. This can be much slower as it must
+                        list all versions of all files however, it is useful
+                        if something has changed at the remote outside of dfb
+                        backup (e.g., manual pruning). When used, will use
                         'remote_compare' attribute instead of 'compare'.
 
 Execution Settings:
@@ -106,10 +127,12 @@ Execution Settings:
   -n, --dry-run         Do not execute any changes
   -i, --interactive     Display planned actions and prompt to continue or stop
   --shell-script DEST or -
-                        Rather than call rclone from within 'dfb backup', instead generate a shell script at
-                        DEST or - that will perform the same actions. This is useful to verify behavior and
-                        modify as needed. Note that this may not be perfect but should be close. Can specify
-                        "-" to print script
+                        Rather than call rclone from within 'dfb backup',
+                        instead generate a shell script at DEST or - that will
+                        perform the same actions. This is useful to verify
+                        behavior and modify as needed. Note that this may not
+                        be perfect but should be close. Can specify "-" to
+                        print script
 
 ```
 
@@ -117,27 +140,37 @@ Execution Settings:
 
 
 ```text
-usage: dfb restore-dir [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file [-o 'OPTION = VALUE'] [--refresh]
-                       [--at TIMESTAMP] [--no-check] [-n] [-i] [--shell-script DEST or -] [--source-dir SOURCE]
+usage: dfb restore-dir [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                       [-o 'OPTION = VALUE'] [--refresh] [--at TIMESTAMP]
+                       [--no-check] [-n] [-i] [--shell-script DEST or -]
+                       [--source-dir SOURCE]
                        dest
 
 Restore a full directory tree to the specified location
 
 positional arguments:
-  dest                  Destination directory. Can be a local destination (e.g. '/path/to/restore' or '.'), an
-                        arbitrary rclone remote (e.g. myremote:restore/path) or relative to the configured
-                        source by specifying it as "@src" (e.g. @src/restore/path)
+  dest                  Destination directory. Can be a local destination
+                        (e.g. '/path/to/restore' or '.'), an arbitrary rclone
+                        remote (e.g. myremote:restore/path) or relative to the
+                        configured source by specifying it as "@src" (e.g.
+                        @src/restore/path)
 
 optional arguments:
   -h, --help            show this help message and exit
-  --at TIMESTAMP        Timestamp for the file to restore. Specify a date and timestamp in an ISO-8601 like
-                        format (YYYY-MM-DD HH:MM:SS) but can be flexible with punctuation, "T"-separators, etc.
-                        Can optionally specify a numeric time zone (e.g. -05:00) or 'Z' for UTC. If no timezone
-                        is specified, it is assumed *local* time. Alternatively, can specify unix time with a
-                        preceding 'u'. Example: 'u1678560662'. Or can specify a time difference from the
-                        current time with any (and only) of the following: second(s), minute(s), hour(s),
-                        day(s), and/or week(s). Example: "10 days 1 hour 32 seconds".
-  --no-check            Disable rclone comparing the source and the dest. If set, will restore everything
+  --at TIMESTAMP        Timestamp for the file to restore. Specify a date and
+                        timestamp in an ISO-8601 like format (YYYY-MM-DD
+                        HH:MM:SS) but can be flexible with punctuation,
+                        "T"-separators, etc. Can optionally specify a numeric
+                        time zone (e.g. -05:00) or 'Z' for UTC. If no timezone
+                        is specified, it is assumed *local* time.
+                        Alternatively, can specify unix time with a preceding
+                        'u'. Example: 'u1678560662'. Or can specify a time
+                        difference from the current time with any (and only)
+                        of the following: second(s), minute(s), hour(s),
+                        day(s), and/or week(s). Example: "10 days 1 hour 32
+                        seconds".
+  --no-check            Disable rclone comparing the source and the dest. If
+                        set, will restore everything
   --source-dir SOURCE   Source directory. Default is the root
 
 Global Settings:
@@ -146,23 +179,31 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Config & Cache Settings:
-  --config file         (Required) Specify config file. Can also be specified via the $DFB_CONFIG_FILE
-                        environment variable or is implied if executing the config file itself.
+  --config file         (Required) Specify config file. Can also be specified
+                        via the $DFB_CONFIG_FILE environment variable or is
+                        implied if executing the config file itself.
                         $DFB_CONFIG_FILE is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
-                        Override any config option for this call only. Must be specified as 'OPTION = VALUE',
-                        where VALUE should be proper Python (e.g. quoted strings). Example: --override "compare
-                        = 'mtime'". Override text is evaluated before *and* after the config file however, the
-                        variables 'pre' and 'post' are defined as True or False if it is before or after the
-                        config file. These can be used with conditionals to control overrides. See readme for
-                        details.Can specify multiple times. There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote destination. This can be much
-                        slower as it must list all versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb restore-dir (e.g., manual pruning). When used,
-                        will use 'remote_compare' attribute instead of 'compare'.
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be
+                        proper Python (e.g. quoted strings). Example:
+                        --override "compare = 'mtime'". Override text is
+                        evaluated before *and* after the config file however,
+                        the variables 'pre' and 'post' are defined as True or
+                        False if it is before or after the config file. These
+                        can be used with conditionals to control overrides.
+                        See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+  --refresh             Refresh the local cache with a real listing of the
+                        remote destination. This can be much slower as it must
+                        list all versions of all files however, it is useful
+                        if something has changed at the remote outside of dfb
+                        restore-dir (e.g., manual pruning). When used, will
+                        use 'remote_compare' attribute instead of 'compare'.
 
 Execution Settings:
   Precedance follows the order specified here
@@ -170,10 +211,12 @@ Execution Settings:
   -n, --dry-run         Do not execute any changes
   -i, --interactive     Display planned actions and prompt to continue or stop
   --shell-script DEST or -
-                        Rather than call rclone from within 'dfb restore-dir', instead generate a shell script
-                        at DEST or - that will perform the same actions. This is useful to verify behavior and
-                        modify as needed. Note that this may not be perfect but should be close. Can specify
-                        "-" to print script
+                        Rather than call rclone from within 'dfb restore-dir',
+                        instead generate a shell script at DEST or - that will
+                        perform the same actions. This is useful to verify
+                        behavior and modify as needed. Note that this may not
+                        be perfect but should be close. Can specify "-" to
+                        print script
 
 ```
 
@@ -181,29 +224,39 @@ Execution Settings:
 
 
 ```text
-usage: dfb restore-file [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file [-o 'OPTION = VALUE'] [--refresh]
-                        [--at TIMESTAMP] [--no-check] [-n] [-i] [--shell-script DEST or -] [--to]
+usage: dfb restore-file [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                        [-o 'OPTION = VALUE'] [--refresh] [--at TIMESTAMP]
+                        [--no-check] [-n] [-i] [--shell-script DEST or -]
+                        [--to]
                         source dest
 
 positional arguments:
   source                File in the Backup. Optionally at the specified time
-  dest                  Destination directory or file (if --to). Can be a local destination (e.g.
-                        '/path/to/restore' or '.'), an arbitrary rclone remote (e.g. myremote:restore/path),
-                        relative to the configured source by specifying it as "@src" (e.g. @src/restore/path),
-                        or specify as '-' to print to stdout.
+  dest                  Destination directory or file (if --to). Can be a
+                        local destination (e.g. '/path/to/restore' or '.'), an
+                        arbitrary rclone remote (e.g. myremote:restore/path),
+                        relative to the configured source by specifying it as
+                        "@src" (e.g. @src/restore/path), or specify as '-' to
+                        print to stdout.
 
 optional arguments:
   -h, --help            show this help message and exit
-  --at TIMESTAMP        Timestamp for the file to restore. Specify a date and timestamp in an ISO-8601 like
-                        format (YYYY-MM-DD HH:MM:SS) but can be flexible with punctuation, "T"-separators, etc.
-                        Can optionally specify a numeric time zone (e.g. -05:00) or 'Z' for UTC. If no timezone
-                        is specified, it is assumed *local* time. Alternatively, can specify unix time with a
-                        preceding 'u'. Example: 'u1678560662'. Or can specify a time difference from the
-                        current time with any (and only) of the following: second(s), minute(s), hour(s),
-                        day(s), and/or week(s). Example: "10 days 1 hour 32 seconds".
-  --no-check            Disable rclone comparing the source and the dest. If set, will restore everything
-  --to                  Assumes 'dest' is a file, not a directory. (i.e., uses 'rclone copyto' instead of
-                        'rclone copy')
+  --at TIMESTAMP        Timestamp for the file to restore. Specify a date and
+                        timestamp in an ISO-8601 like format (YYYY-MM-DD
+                        HH:MM:SS) but can be flexible with punctuation,
+                        "T"-separators, etc. Can optionally specify a numeric
+                        time zone (e.g. -05:00) or 'Z' for UTC. If no timezone
+                        is specified, it is assumed *local* time.
+                        Alternatively, can specify unix time with a preceding
+                        'u'. Example: 'u1678560662'. Or can specify a time
+                        difference from the current time with any (and only)
+                        of the following: second(s), minute(s), hour(s),
+                        day(s), and/or week(s). Example: "10 days 1 hour 32
+                        seconds".
+  --no-check            Disable rclone comparing the source and the dest. If
+                        set, will restore everything
+  --to                  Assumes 'dest' is a file, not a directory. (i.e., uses
+                        'rclone copyto' instead of 'rclone copy')
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -211,23 +264,31 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Config & Cache Settings:
-  --config file         (Required) Specify config file. Can also be specified via the $DFB_CONFIG_FILE
-                        environment variable or is implied if executing the config file itself.
+  --config file         (Required) Specify config file. Can also be specified
+                        via the $DFB_CONFIG_FILE environment variable or is
+                        implied if executing the config file itself.
                         $DFB_CONFIG_FILE is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
-                        Override any config option for this call only. Must be specified as 'OPTION = VALUE',
-                        where VALUE should be proper Python (e.g. quoted strings). Example: --override "compare
-                        = 'mtime'". Override text is evaluated before *and* after the config file however, the
-                        variables 'pre' and 'post' are defined as True or False if it is before or after the
-                        config file. These can be used with conditionals to control overrides. See readme for
-                        details.Can specify multiple times. There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote destination. This can be much
-                        slower as it must list all versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb restore-file (e.g., manual pruning). When used,
-                        will use 'remote_compare' attribute instead of 'compare'.
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be
+                        proper Python (e.g. quoted strings). Example:
+                        --override "compare = 'mtime'". Override text is
+                        evaluated before *and* after the config file however,
+                        the variables 'pre' and 'post' are defined as True or
+                        False if it is before or after the config file. These
+                        can be used with conditionals to control overrides.
+                        See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+  --refresh             Refresh the local cache with a real listing of the
+                        remote destination. This can be much slower as it must
+                        list all versions of all files however, it is useful
+                        if something has changed at the remote outside of dfb
+                        restore-file (e.g., manual pruning). When used, will
+                        use 'remote_compare' attribute instead of 'compare'.
 
 Execution Settings:
   Precedance follows the order specified here
@@ -235,9 +296,11 @@ Execution Settings:
   -n, --dry-run         Do not execute any changes
   -i, --interactive     Display planned actions and prompt to continue or stop
   --shell-script DEST or -
-                        Rather than call rclone from within 'dfb restore-file', instead generate a shell script
-                        at DEST or - that will perform the same actions. This is useful to verify behavior and
-                        modify as needed. Note that this may not be perfect but should be close. Can specify
+                        Rather than call rclone from within 'dfb restore-
+                        file', instead generate a shell script at DEST or -
+                        that will perform the same actions. This is useful to
+                        verify behavior and modify as needed. Note that this
+                        may not be perfect but should be close. Can specify
                         "-" to print script
 
 ```
@@ -246,9 +309,10 @@ Execution Settings:
 
 
 ```text
-usage: dfb ls [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP] [--after TIMESTAMP] [--only TIMESTAMP]
-              --config file [-o 'OPTION = VALUE'] [--refresh] [--no-header] [--human] [--timestamp-local] [-d]
-              [--full-path] [-l]
+usage: dfb ls [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
+              [--after TIMESTAMP] [--only TIMESTAMP] --config file
+              [-o 'OPTION = VALUE'] [--refresh] [--no-header] [--human]
+              [--timestamp-local] [-d] [--full-path] [-l]
               [path]
 
 positional arguments:
@@ -258,7 +322,8 @@ optional arguments:
   -h, --help            show this help message and exit
   -d, --deleted         List deleted files too with '<filename> (DEL)'
   --full-path           Show full path when listing subdirs
-  -l, --long            Long listing with size,mtime,name. Specify twice for size,mtime,timestamp,name.
+  -l, --long            Long listing with size,mtime,name. Specify twice for
+                        size,mtime,timestamp,name.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -266,46 +331,58 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Time Specification:
-  All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-DD HH:MM:SS) but can be
-  flexible with punctuation, "T"-separators, etc. Can optionally specify a numeric time zone (e.g. -05:00) or
-  'Z' for UTC. If no timezone is specified, it is assumed *local* time. Alternatively, can specify unix time
-  with a preceding 'u'. Example: 'u1678560662'. Or can specify a time difference from the current time with
-  any (and only) of the following: second(s), minute(s), hour(s), day(s), and/or week(s). Example: "10 days 1
-  hour 32 seconds".
+  All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format
+  (YYYY-MM-DD HH:MM:SS) but can be flexible with punctuation,
+  "T"-separators, etc. Can optionally specify a numeric time zone (e.g.
+  -05:00) or 'Z' for UTC. If no timezone is specified, it is assumed *local*
+  time. Alternatively, can specify unix time with a preceding 'u'. Example:
+  'u1678560662'. Or can specify a time difference from the current time with
+  any (and only) of the following: second(s), minute(s), hour(s), day(s),
+  and/or week(s). Example: "10 days 1 hour 32 seconds".
 
   --at TIMESTAMP, --before TIMESTAMP
-                        Timestamp at which to show the files. If not specified, will be the latest. Note that
-                        if '--after' is set, this will not be the full snapshot in time.
-  --after TIMESTAMP     Only show files after the specified time. Note that this means the '--at' will not be
-                        the full snapshot.
-  --only TIMESTAMP      Only show files AT the specified time. Shortcut for '--before TIMESTAMP --after
-                        TIMESTAMP' since both are inclusive. Useful if the exact timestamp is known such as
-                        from the 'timestamps' command.
+                        Timestamp at which to show the files. If not
+                        specified, will be the latest. Note that if '--after'
+                        is set, this will not be the full snapshot in time.
+  --after TIMESTAMP     Only show files after the specified time. Note that
+                        this means the '--at' will not be the full snapshot.
+  --only TIMESTAMP      Only show files AT the specified time. Shortcut for '
+                        --before TIMESTAMP --after TIMESTAMP' since both are
+                        inclusive. Useful if the exact timestamp is known such
+                        as from the 'timestamps' command.
 
 Config & Cache Settings:
-  --config file         (Required) Specify config file. Can also be specified via the $DFB_CONFIG_FILE
-                        environment variable or is implied if executing the config file itself.
+  --config file         (Required) Specify config file. Can also be specified
+                        via the $DFB_CONFIG_FILE environment variable or is
+                        implied if executing the config file itself.
                         $DFB_CONFIG_FILE is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
-                        Override any config option for this call only. Must be specified as 'OPTION = VALUE',
-                        where VALUE should be proper Python (e.g. quoted strings). Example: --override "compare
-                        = 'mtime'". Override text is evaluated before *and* after the config file however, the
-                        variables 'pre' and 'post' are defined as True or False if it is before or after the
-                        config file. These can be used with conditionals to control overrides. See readme for
-                        details.Can specify multiple times. There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote destination. This can be much
-                        slower as it must list all versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb ls (e.g., manual pruning). When used, will use
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be
+                        proper Python (e.g. quoted strings). Example:
+                        --override "compare = 'mtime'". Override text is
+                        evaluated before *and* after the config file however,
+                        the variables 'pre' and 'post' are defined as True or
+                        False if it is before or after the config file. These
+                        can be used with conditionals to control overrides.
+                        See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+  --refresh             Refresh the local cache with a real listing of the
+                        remote destination. This can be much slower as it must
+                        list all versions of all files however, it is useful
+                        if something has changed at the remote outside of dfb
+                        ls (e.g., manual pruning). When used, will use
                         'remote_compare' attribute instead of 'compare'.
 
 Listing Settings:
   --no-header           Disable headers where applicable
   --human               Use human readable sizes
-  --timestamp-local     Specify timestamps in local time instead of UTC/Z (default). Note, if applicable, all
-                        ModTimes are local
+  --timestamp-local     Specify timestamps in local time instead of UTC/Z
+                        (default). Note, if applicable, all ModTimes are local
 
 ```
 
@@ -313,8 +390,9 @@ Listing Settings:
 
 
 ```text
-usage: dfb snapshot [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP] [--after TIMESTAMP]
-                    [--only TIMESTAMP] --config file [-o 'OPTION = VALUE'] [--refresh] [--output OUTPUT]
+usage: dfb snapshot [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
+                    [--after TIMESTAMP] [--only TIMESTAMP] --config file
+                    [-o 'OPTION = VALUE'] [--refresh] [--output OUTPUT]
                     [path]
 
 positional arguments:
@@ -330,40 +408,52 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Time Specification:
-  All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-DD HH:MM:SS) but can be
-  flexible with punctuation, "T"-separators, etc. Can optionally specify a numeric time zone (e.g. -05:00) or
-  'Z' for UTC. If no timezone is specified, it is assumed *local* time. Alternatively, can specify unix time
-  with a preceding 'u'. Example: 'u1678560662'. Or can specify a time difference from the current time with
-  any (and only) of the following: second(s), minute(s), hour(s), day(s), and/or week(s). Example: "10 days 1
-  hour 32 seconds".
+  All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format
+  (YYYY-MM-DD HH:MM:SS) but can be flexible with punctuation,
+  "T"-separators, etc. Can optionally specify a numeric time zone (e.g.
+  -05:00) or 'Z' for UTC. If no timezone is specified, it is assumed *local*
+  time. Alternatively, can specify unix time with a preceding 'u'. Example:
+  'u1678560662'. Or can specify a time difference from the current time with
+  any (and only) of the following: second(s), minute(s), hour(s), day(s),
+  and/or week(s). Example: "10 days 1 hour 32 seconds".
 
   --at TIMESTAMP, --before TIMESTAMP
-                        Timestamp at which to show the files. If not specified, will be the latest. Note that
-                        if '--after' is set, this will not be the full snapshot in time.
-  --after TIMESTAMP     Only show files after the specified time. Note that this means the '--at' will not be
-                        the full snapshot.
-  --only TIMESTAMP      Only show files AT the specified time. Shortcut for '--before TIMESTAMP --after
-                        TIMESTAMP' since both are inclusive. Useful if the exact timestamp is known such as
-                        from the 'timestamps' command.
+                        Timestamp at which to show the files. If not
+                        specified, will be the latest. Note that if '--after'
+                        is set, this will not be the full snapshot in time.
+  --after TIMESTAMP     Only show files after the specified time. Note that
+                        this means the '--at' will not be the full snapshot.
+  --only TIMESTAMP      Only show files AT the specified time. Shortcut for '
+                        --before TIMESTAMP --after TIMESTAMP' since both are
+                        inclusive. Useful if the exact timestamp is known such
+                        as from the 'timestamps' command.
 
 Config & Cache Settings:
-  --config file         (Required) Specify config file. Can also be specified via the $DFB_CONFIG_FILE
-                        environment variable or is implied if executing the config file itself.
+  --config file         (Required) Specify config file. Can also be specified
+                        via the $DFB_CONFIG_FILE environment variable or is
+                        implied if executing the config file itself.
                         $DFB_CONFIG_FILE is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
-                        Override any config option for this call only. Must be specified as 'OPTION = VALUE',
-                        where VALUE should be proper Python (e.g. quoted strings). Example: --override "compare
-                        = 'mtime'". Override text is evaluated before *and* after the config file however, the
-                        variables 'pre' and 'post' are defined as True or False if it is before or after the
-                        config file. These can be used with conditionals to control overrides. See readme for
-                        details.Can specify multiple times. There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote destination. This can be much
-                        slower as it must list all versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb snapshot (e.g., manual pruning). When used, will
-                        use 'remote_compare' attribute instead of 'compare'.
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be
+                        proper Python (e.g. quoted strings). Example:
+                        --override "compare = 'mtime'". Override text is
+                        evaluated before *and* after the config file however,
+                        the variables 'pre' and 'post' are defined as True or
+                        False if it is before or after the config file. These
+                        can be used with conditionals to control overrides.
+                        See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+  --refresh             Refresh the local cache with a real listing of the
+                        remote destination. This can be much slower as it must
+                        list all versions of all files however, it is useful
+                        if something has changed at the remote outside of dfb
+                        snapshot (e.g., manual pruning). When used, will use
+                        'remote_compare' attribute instead of 'compare'.
 
 ```
 
@@ -371,8 +461,9 @@ Config & Cache Settings:
 
 
 ```text
-usage: dfb versions [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file [-o 'OPTION = VALUE'] [--refresh]
-                    [--no-header] [--human] [--timestamp-local] [--ref-count] [--real-path]
+usage: dfb versions [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                    [-o 'OPTION = VALUE'] [--refresh] [--no-header] [--human]
+                    [--timestamp-local] [--ref-count] [--real-path]
                     filepath
 
 positional arguments:
@@ -381,7 +472,8 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   --ref-count           Include the reference count
-  --real-path           Include *full* real path of the file. Specify twice to include the rclone path
+  --real-path           Include *full* real path of the file. Specify twice to
+                        include the rclone path
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -389,32 +481,41 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Config & Cache Settings:
-  --config file         (Required) Specify config file. Can also be specified via the $DFB_CONFIG_FILE
-                        environment variable or is implied if executing the config file itself.
+  --config file         (Required) Specify config file. Can also be specified
+                        via the $DFB_CONFIG_FILE environment variable or is
+                        implied if executing the config file itself.
                         $DFB_CONFIG_FILE is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
-                        Override any config option for this call only. Must be specified as 'OPTION = VALUE',
-                        where VALUE should be proper Python (e.g. quoted strings). Example: --override "compare
-                        = 'mtime'". Override text is evaluated before *and* after the config file however, the
-                        variables 'pre' and 'post' are defined as True or False if it is before or after the
-                        config file. These can be used with conditionals to control overrides. See readme for
-                        details.Can specify multiple times. There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote destination. This can be much
-                        slower as it must list all versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb versions (e.g., manual pruning). When used, will
-                        use 'remote_compare' attribute instead of 'compare'.
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be
+                        proper Python (e.g. quoted strings). Example:
+                        --override "compare = 'mtime'". Override text is
+                        evaluated before *and* after the config file however,
+                        the variables 'pre' and 'post' are defined as True or
+                        False if it is before or after the config file. These
+                        can be used with conditionals to control overrides.
+                        See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+  --refresh             Refresh the local cache with a real listing of the
+                        remote destination. This can be much slower as it must
+                        list all versions of all files however, it is useful
+                        if something has changed at the remote outside of dfb
+                        versions (e.g., manual pruning). When used, will use
+                        'remote_compare' attribute instead of 'compare'.
 
 Listing Settings:
   --no-header           Disable headers where applicable
   --human               Use human readable sizes
-  --timestamp-local     Specify timestamps in local time instead of UTC/Z (default). Note, if applicable, all
-                        ModTimes are local
+  --timestamp-local     Specify timestamps in local time instead of UTC/Z
+                        (default). Note, if applicable, all ModTimes are local
 
-Fields are [reference_count],size,mtime,timestamp,[real-path]. mtime is local and snapshot will depend on
-setting. Size will be "D" for deleted items and *end* in "R" for a reference file
+Fields are [reference_count],size,mtime,timestamp,[real-path]. mtime is local
+and snapshot will depend on setting. Size will be "D" for deleted items and
+*end* in "R" for a reference file
 
 ```
 
@@ -422,18 +523,23 @@ setting. Size will be "D" for deleted items and *end* in "R" for a reference fil
 
 
 ```text
-usage: dfb prune [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file [-o 'OPTION = VALUE'] [--refresh] [-n] [-i]
+usage: dfb prune [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                 [-o 'OPTION = VALUE'] [--refresh] [-n] [-i]
                  [--shell-script DEST or -]
                  when
 
 positional arguments:
-  when                  Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-DD HH:MM:SS) but can
-                        be flexible with punctuation, "T"-separators, etc. Can optionally specify a numeric
-                        time zone (e.g. -05:00) or 'Z' for UTC. If no timezone is specified, it is assumed
-                        *local* time. Alternatively, can specify unix time with a preceding 'u'. Example:
-                        'u1678560662'. Or can specify a time difference from the current time with any (and
-                        only) of the following: second(s), minute(s), hour(s), day(s), and/or week(s). Example:
-                        "10 days 1 hour 32 seconds".
+  when                  Specify a date and timestamp in an ISO-8601 like
+                        format (YYYY-MM-DD HH:MM:SS) but can be flexible with
+                        punctuation, "T"-separators, etc. Can optionally
+                        specify a numeric time zone (e.g. -05:00) or 'Z' for
+                        UTC. If no timezone is specified, it is assumed
+                        *local* time. Alternatively, can specify unix time
+                        with a preceding 'u'. Example: 'u1678560662'. Or can
+                        specify a time difference from the current time with
+                        any (and only) of the following: second(s), minute(s),
+                        hour(s), day(s), and/or week(s). Example: "10 days 1
+                        hour 32 seconds".
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -444,22 +550,30 @@ Global Settings:
   -v, --verbose, --debug
                         +1 verbosity
   -q, --quiet           -1 verbosity
-  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's
+                        default
 
 Config & Cache Settings:
-  --config file         (Required) Specify config file. Can also be specified via the $DFB_CONFIG_FILE
-                        environment variable or is implied if executing the config file itself.
+  --config file         (Required) Specify config file. Can also be specified
+                        via the $DFB_CONFIG_FILE environment variable or is
+                        implied if executing the config file itself.
                         $DFB_CONFIG_FILE is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
-                        Override any config option for this call only. Must be specified as 'OPTION = VALUE',
-                        where VALUE should be proper Python (e.g. quoted strings). Example: --override "compare
-                        = 'mtime'". Override text is evaluated before *and* after the config file however, the
-                        variables 'pre' and 'post' are defined as True or False if it is before or after the
-                        config file. These can be used with conditionals to control overrides. See readme for
-                        details.Can specify multiple times. There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote destination. This can be much
-                        slower as it must list all versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb prune (e.g., manual pruning). When used, will use
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be
+                        proper Python (e.g. quoted strings). Example:
+                        --override "compare = 'mtime'". Override text is
+                        evaluated before *and* after the config file however,
+                        the variables 'pre' and 'post' are defined as True or
+                        False if it is before or after the config file. These
+                        can be used with conditionals to control overrides.
+                        See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+  --refresh             Refresh the local cache with a real listing of the
+                        remote destination. This can be much slower as it must
+                        list all versions of all files however, it is useful
+                        if something has changed at the remote outside of dfb
+                        prune (e.g., manual pruning). When used, will use
                         'remote_compare' attribute instead of 'compare'.
 
 Execution Settings:
@@ -468,14 +582,18 @@ Execution Settings:
   -n, --dry-run         Do not execute any changes
   -i, --interactive     Display planned actions and prompt to continue or stop
   --shell-script DEST or -
-                        Rather than call rclone from within 'dfb prune', instead generate a shell script at
-                        DEST or - that will perform the same actions. This is useful to verify behavior and
-                        modify as needed. Note that this may not be perfect but should be close. Can specify
-                        "-" to print script
+                        Rather than call rclone from within 'dfb prune',
+                        instead generate a shell script at DEST or - that will
+                        perform the same actions. This is useful to verify
+                        behavior and modify as needed. Note that this may not
+                        be perfect but should be close. Can specify "-" to
+                        print script
 
-Pruning takes into account reference files and delete markers that need to be kept. Note that after pruning, it
-may appear possible to restore older than the prune time but the results are very unlikely to be correct! It is
-due to files that are not-yet-modified or are referenced. The prune algorithm may miss some delete makers that
-technically could be deleted but it is more efficient not to try to identify them.
+Pruning takes into account reference files and delete markers that need to be
+kept. Note that after pruning, it may appear possible to restore older than
+the prune time but the results are very unlikely to be correct! It is due to
+files that are not-yet-modified or are referenced. The prune algorithm may
+miss some delete makers that technically could be deleted but it is more
+efficient not to try to identify them.
 
 ```

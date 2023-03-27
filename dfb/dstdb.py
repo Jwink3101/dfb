@@ -10,7 +10,7 @@ from functools import partialmethod
 from textwrap import dedent
 
 from . import __version__, log, debug, nowfun
-from .utils import time2all, MyRow, star
+from .utils import time2all, MyRow, star, listify
 from .timestamps import timestamp_parser
 from .rclone import IGNORED_FILE_DATA
 from .threadmapper import thread_map_unordered as tmap
@@ -383,6 +383,189 @@ class DFBDST:
         with db:
             r = db.execute(query, qvals)
         return r
+
+    def ls(
+        self,
+        subdir="",
+        *,
+        before=None,
+        after=None,
+        select="*",
+        remove_delete=True,
+        conditions=None,
+    ):
+        """
+
+        Build a query.
+
+        path: ''
+            Starting path
+
+        before:
+            Select files <= before. This is the "at" snapshot time. Will be parsed by
+            timestamp_parser. Times are inclusive on both ends
+
+        after:
+            Select files >= after. This is the "at" snapshot time. Will be parsed by
+            timestamp_parser. Times are inclusive on both ends
+
+        select
+            What to return.
+
+        remove_delete: [True]
+            If False, will keep deleted items. Uses a subquery which should be faster
+            than manual filtering
+
+        conditions:
+            List of additional (sql,val) pairs. Warning: Do not let sql be user input.
+            Examples: ('apparentparent LIKE ?','a/sub/path/')
+
+            WARNING: Do not do ('size >= ?',0) since that will then include the non-deleted
+                     version. It is better to filter it later.
+
+        Some of this very clever SQL came from my reddit post here:
+        https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
+        """
+
+        # While less efficient than a single query, this works by finding the sub-items
+        # and then doing additional queries on them
+
+        conditions = conditions or []
+
+        ###########################################################
+        # All immediate files and directories (though I only need
+        # directories and do files down below. I may remove that
+        # from here if I can)
+        # Again, See: https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
+        query = []
+        qvals = []
+
+        subdir = subdir.removeprefix("./").removesuffix("/")
+        if subdir:
+            query.append(
+                f"""
+                WITH subpaths AS (
+                    SELECT SUBSTR(apath, {len(subdir) + 2}) AS path
+                    FROM items
+                    WHERE apath LIKE ?
+                )
+
+                SELECT DISTINCT 
+                    SUBSTR(
+                        path,
+                        1,
+                        CASE INSTR(path, '/')
+                            WHEN 0
+                            THEN LENGTH(path)
+                            ELSE INSTR(path, '/')
+                        END
+                    ) as sub
+                FROM subpaths"""
+            )
+            qvals.append(f"{subdir}/%")
+        else:
+            query.append(
+                """
+                SELECT DISTINCT 
+                    SUBSTR(
+                        apath,
+                        1,
+                        CASE INSTR(apath, '/')
+                            WHEN 0
+                            THEN LENGTH(apath)
+                            ELSE INSTR(apath, '/')
+                        END
+                    ) as sub
+                FROM items"""
+            )
+
+        db = self.db()
+        diritems = db.execute("\n".join(query), qvals)
+        apaths = (os.path.join(subdir, row["sub"]) for row in diritems)
+
+        ###########################################################
+
+        if before:
+            b0 = before
+            before = timestamp_parser(
+                before, aware=True, epoch=True, now=self.config.now.obj
+            )
+            debug(f"Interpreted before = {b0} as {before} (s)")
+            conditions.append(("timestamp <= ?", before))
+
+        if after:
+            a0 = after
+            after = timestamp_parser(
+                after, aware=True, epoch=True, now=self.config.now.obj
+            )
+            debug(f"Interpreted after = {a0} as {after} (s)")
+            conditions.append(("timestamp >= ?", after))
+
+        conditions0 = conditions.copy()
+
+        # The above does give files and directories but we really only
+        # care about directories for now
+
+        directories = []
+        for apath in apaths:
+            is_dir = apath.endswith("/")
+            if not is_dir:
+                continue
+            # We need to make sure there is at least one file under
+            # the directory that meets conditions (before,after,
+            # optionally deleted) since they could be there
+            # outside of those
+            conditions = conditions0.copy()
+            qvals = []
+
+            conditions.append(["apath LIKE ?", f"{apath.removesuffix('/')}/%"])
+
+            # We just need to find any file in the subdir. Inner query for groups
+            inq = ["SELECT size FROM items"]
+            inq.append("WHERE")
+            inq.append(" AND ".join(cond[0] for cond in conditions))
+            inq.append("GROUP BY apath HAVING MAX(timestamp)")
+            inq = "\n".join(inq)
+
+            outq = [f"SELECT * FROM ({inq})"]
+            if remove_delete:
+                outq.append("WHERE size >= 0")
+            outq.append("LIMIT 1")  # Just one
+
+            qvals.extend(cond[1] for cond in conditions)
+            r = db.execute("\n".join(outq), qvals).fetchone()
+            if r:
+                directories.append(apath)
+
+        ## Do files
+        conditions = conditions0.copy()
+        conditions.append(["apath LIKE ?", os.path.join(subdir, "%")])
+        conditions.append(["apath NOT LIKE ?", os.path.join(subdir, "%", "%")])
+
+        # Use * then let SQL downselect before return
+        query = [f"SELECT * FROM items"]
+        qvals = []
+
+        query.append("WHERE")
+        query.append(" AND ".join(cond[0] for cond in conditions))
+        query.append("GROUP BY apath HAVING MAX(timestamp)")
+        query.append("ORDER BY LOWER(apath)")
+
+        qvals.extend(cond[1] for cond in conditions)
+
+        qtxt = f"""
+            SELECT {select} FROM (
+                **sub**
+            )""".replace(
+            "**sub**", "\n".join(query)
+        )
+
+        if remove_delete:
+            qtxt = f"{qtxt} WHERE size >= 0"
+
+        files = [DFBDST.fullrow2dict(row) for row in db.execute(qtxt, qvals)]
+
+        return directories, files
 
     def file_versions(self, filepath, count_refs=False):
         db = self.db()

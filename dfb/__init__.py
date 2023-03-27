@@ -4,7 +4,7 @@ from .configuration import log, debug, LOCK
 from .utils import time2all
 from .timestamps import timestamp_parser
 
-__version__ = "20230326.0.BETA"
+__version__ = "20230327.0.BETA"
 
 # This is a bit of a hack. When setup.py is run, if and only if, it is a git repo, this
 # will get set. Otherwise, it is None

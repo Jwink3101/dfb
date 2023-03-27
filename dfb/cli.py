@@ -105,6 +105,9 @@ def parse(argv=None, shebanged=False):
     global_group.add_argument(
         "--temp-dir", help="Specify a temp dir. Otherwise will use Python's default"
     )
+    global_group.add_argument(
+        "--_return-config", action="store_true", help=argparse.SUPPRESS
+    )
 
     restore_parent = argparse.ArgumentParser(add_help=False)
     restore_parent.add_argument(
@@ -498,6 +501,11 @@ def _cli(cliconfig):
 
         config.parse(override_txt="\n".join(cliconfig.override))
         debug(f"{cliconfig = }")
+
+        if getattr(cliconfig, "_return_config", False):
+            global _TESTMODE
+            _TESTMODE = True
+            return config
 
         ###########################################
         ## Call out to the actual workers

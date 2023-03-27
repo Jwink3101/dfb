@@ -27,6 +27,10 @@ DFB came out of an idea I posed on the rclone forum and enabled by reusing a goo
 
 [rirb]:https://github.com/Jwink3101/rirb
 
+## Command Help
+
+See [CLI Help](CLI_help.md)
+
 ## File names
 
 When files are backed up, they are renamed to have the date of the backup in the name. Filenames are
@@ -70,7 +74,13 @@ or set the environment `$DFB_CONFIG_FILE=path/to/config.py`. Or, directly execut
 
 The attributes for comparison and for renames are user settable. If both remotes support hashes, it almost always best to use them. And if the source is slow to list ModTime, you can also set `get_modtime = False`. If remotes support ModTime and it is fast, that is a decent choice for both compare and renames.
 
-Generally speaking, comparisons and renames are actually source-to-source because the source values are saved. However, if run with `--refresh`, then comparisons and move-tracking are source-to-dest. In that case, you can set `dst_compare` and `dst_renames`. For example, if backing up local to WebDAV, the following would make sense:
+Generally speaking, comparisons and renames are actually source-to-source because the source values are saved. However, if run with `--refresh`, then comparisons and move-tracking are source-to-dest. In that case, you can set `dst_compare` and `dst_renames`. 
+
+Examples:
+
+**Local to WebDAV** and **Local to S3**
+
+WebDAV doesn't support ModTime and S3 does but it is super slow
 
 ```python
 compare = 'mtime'
@@ -79,6 +89,28 @@ renames = 'mtime'
 dst_renames = False
 ```
 This will disable rename tracking when using `--refresh` since size is not a good rename tracker.
+
+**S3 to S3**:
+
+Use hashes since they both support it
+
+```python
+compare = 'hash'
+dst_compare = None
+renames = 'hash'
+dst_renames = None
+```
+
+**S3 to Local**
+
+Use hashes for itself
+
+```
+compare = 'hash'
+dst_compare = 'size'
+renames = 'hash'
+dst_renames = False
+```
 
 ### Atomic Transfers
 
@@ -146,7 +178,7 @@ that makes it even *harder* to human parse. It is not recommended but in practic
 
 ### What happens if a transfer is interrupted.
 
-Short answer: The most you lose is in-progress
+**Short answer:** Run it again and it'll be fine! You will lose the progress of active transfers but they will be fixed and it'll keep going.
 
 Long answer: Incomplete versions may show up but will, by definition, a new version will be uploaded next time. It is also possible if an interruption is in the very short time between upload and saving in the database, that a complete version will be there and you upload again.
 
@@ -177,3 +209,9 @@ In no real particular order...
 ### Why does some of the code look weird:
 
 Simple answer: Make nobody happy. [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+### I pruned older files. Why do I see those timestamps?
+
+Files can stick around after pruning for a few reasons. The most common is that it hasn't been updated after the prune time so it needs to stick around.
+
+Another possible scenario is that a file is moved and the referrer is not pruned. In that case, both the referent and the delete file must stay. The former because it is still needed and the latter so that it doesn't appear undeleted. This does add additional complication but it is considered in the prune logic.

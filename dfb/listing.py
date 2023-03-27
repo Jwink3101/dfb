@@ -40,44 +40,16 @@ def ls(config):
     args = config.cliconfig
     dstdb = DFBDST(config)
 
-    rows = dstdb.snapshot(
-        path=args.path,
+    subdirs, files = dstdb.ls(
+        subdir=args.path,
         before=args.before,
         after=args.after,
         remove_delete=not args.deleted,
     )
-    rows = (dstdb.fullrow2dict(row) for row in rows)
 
-    path = args.path.strip()
-    if path.startswith("./"):
-        path = path[2:].strip()
-    if path:
-        path = path.rstrip("/")
-
-    # Files and subdirs
-    files = []
-    subdirs = set()
-    for row in rows:
-        apath = row["apath"]
-
-        if apath.startswith("./"):
-            apath = apath[2:]
-
-        parent, name = os.path.split(apath)
-        if parent == path:
-            files.append(row)
-        else:
-            subdirs.add(parent)
-
-    subdirs = (os.path.relpath(p, path) for p in subdirs)
-    subdirs = {p.split("/", 1)[0] for p in subdirs}
-
+    ####
     items = list(subdirs) + files
-    items.sort(
-        key=lambda i: i
-        if isinstance(i, str)
-        else os.path.relpath(i["apath"], args.path)
-    )
+    items.sort(key=lambda i: i if isinstance(i, str) else i["apath"])
 
     # Build a table
     table = []
@@ -85,8 +57,8 @@ def ls(config):
         table.append(["size", "ModTime", "Timestamp", "path"])
     for item in items:
         if isinstance(item, str):
-            item = os.path.join(args.path, item) if args.full_path else item
-            table.append(["", "", "", f"{item}/"])
+            item = item if args.full_path else os.path.relpath(item, args.path)
+            table.append(["", "", "", f"{item.removesuffix('/')}/"])
             continue
 
         mtime = item.get("mtime", None)
@@ -105,8 +77,8 @@ def ls(config):
             ts = ts.astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
         else:
             ts = ts.strftime("%Y-%m-%d %H:%M:%SZ")
-        path = os.path.relpath(item["apath"], args.path)
-        path = os.path.join(args.path, path) if args.full_path else path
+        path = item["apath"]
+        path = path if args.full_path else os.path.relpath(path, args.path)
 
         if args.human:
             size = "{:0.2f} {}".format(*bytes2human(item["size"]))
