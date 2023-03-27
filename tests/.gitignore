@@ -1,0 +1,4 @@
+testdirs/
+TEMP/
+src/
+.coverage
