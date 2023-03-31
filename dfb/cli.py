@@ -414,7 +414,10 @@ def parse(argv=None, shebanged=False):
     )
     prune.add_argument(
         "when",
-        help=ISODATEHELP,
+        help=f"""
+        Specify file modification prune time. The modification time of a file is when
+        the *next* file was written and not the original timestamp.
+        {ISODATEHELP}.""",
     )
 
     args = parser.parse_args(argv)

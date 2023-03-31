@@ -23,6 +23,8 @@ import pytest
 
 
 def test_main():
+    import json
+
     test = testutils.Tester(name="main")
 
     test.config["renames"] = "mtime"
@@ -79,7 +81,7 @@ def test_main():
     test.move("src/two_mv-1.txt", "src/two_moved-1.txt")
     test.move("src/two_mv-2.txt", "src/two_moved-2.txt")
 
-    # Change his back
+    # Change this back
     test.config["dst_atomic_transfer"] = True
     test.write_config()
 
@@ -101,20 +103,16 @@ def test_main():
     assert any(("apath", "new_at_3.txt") in f for f in test.remote_snapshot(before=4))
 
     # Test the move
-    assert (
-        test.dst_rclone.read("sub2/moved.19700101000003R.txt")
-        == b"sub/move.19700101000001.txt"
-    )
+    r = json.loads(test.dst_rclone.read("sub2/moved.19700101000003R.txt"))
+    assert r == {"ver": 2, "rel": "../sub/move.19700101000001.txt"}
 
     test.write_pre("src/versions.txt", "versions 5...")
     test.move("src/sub2/moved.txt", "src/moved_again.txt")
     test.backup("--refresh", offset=5)  # add refresh to test that too
 
     # Should still point to the original!
-    assert (
-        test.dst_rclone.read("moved_again.19700101000005R.txt")
-        == b"sub/move.19700101000001.txt"
-    )
+    r = json.loads(test.dst_rclone.read("moved_again.19700101000005R.txt"))
+    assert r == {"ver": 2, "rel": "sub/move.19700101000001.txt"}
 
     diff = test.src_missing_in_dst(keys="apath")
     assert diff == {
@@ -133,8 +131,6 @@ def test_main():
     test.call("snapshot", "--output", "A.jsonl")
     test.call("snapshot", "--refresh", "--output", "B.jsonl")
 
-    import json
-
     with open("A.jsonl") as fp:
         A = [json.loads(line) for line in fp]
     with open("B.jsonl") as fp:
@@ -147,7 +143,17 @@ def test_main():
     A = {frozenset(item.items()) for item in A}
     B = {frozenset(item.items()) for item in B}
     assert A == B
-    # -
+
+    ## Test reference format v2
+    test.call("ls", "-vv", "--refresh")
+    log = test.logs[-1][0]
+    assert "Reference 'moved_again.19700101000005R.txt' is v2" in log
+
+    with open("dst/moved_again.19700101000005R.txt", "wt") as fp:
+        fp.write("sub/move.19700101000001.txt")
+    test.call("ls", "-vv", "--refresh")
+    log = test.logs[-1][0]
+    assert "Reference 'moved_again.19700101000005R.txt' is v1 (implied)" in log
 
     # ## Do the snapshots match the reality?
 
@@ -805,7 +811,7 @@ def test_subdirs():
 
 
 if __name__ == "__main__":
-    #     test_main()
+    test_main()
     #     test_shell()
     #     test_log_upload(True)
     #     test_log_upload(False)

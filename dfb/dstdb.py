@@ -203,9 +203,26 @@ class DFBDST:
         def _get_referent(file):
             refferer = file["rpath"]
             referent = rc.read((self.config.dst, refferer)).decode()
-            return file, referent
 
-        files = tmap(_get_referent, files, Nt=self.config.concurrency)
+            # Handle different versions here
+            try:
+                referent = json.loads(referent)
+            except json.JSONDecodeError:
+                debug(f"Reading reference. Assuming V1")
+                referent = {"ver": 1, "path": referent}
+
+            ver = referent["ver"]
+            if ver == 1:
+                debug(f"Reference {repr(refferer)} is v1 (implied)")
+                return file, referent["path"]
+            elif ver == 2:
+                debug(f"Reference {repr(refferer)} is v2")
+                path = os.path.join(os.path.dirname(refferer), referent["rel"])
+                path = os.path.normpath(path)
+                return file, path
+            raise ValueError("Unrecognized Version")
+
+        files = tmap(_get_referent, files, Nt=1)  # self.config.concurrency)
 
         def _update(file, referent):
             referent = referent.strip("\n")

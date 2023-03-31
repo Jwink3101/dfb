@@ -172,7 +172,7 @@ class Backup:
 
         if subdir:
             log(
-                "WARNING: subdir {repr(subdir)} specified. Absolute/anchored filters will break!"
+                f"WARNING: subdir {repr(subdir)} specified. Absolute/anchored filters will break!"
             )
 
         rcfiles = config.src_rclone.listremote(
@@ -535,9 +535,16 @@ class Backup:
             for file in files:
                 ref_rpath = file["ref_rpath"]
                 rpath = file["rpath"]
+
+                ref = {
+                    "ver": 2,
+                    "rel": os.path.relpath(rpath, os.path.dirname(ref_rpath)),
+                }
+                reftxt = json.dumps(ref)
+
                 dst = rcpathjoin(config.dst, ref_rpath)
 
-                echo = shlex.join(["echo", rpath])
+                echo = shlex.join(["echo", reftxt])
                 rcat = shlex.join(cmd + [dst])
 
                 out.append(f"{echo} |  {rcat}")
@@ -550,12 +557,15 @@ class Backup:
             original = file["original"]
             ref_rpath = file["ref_rpath"]
             rpath = file["rpath"]
+
+            ref = {"ver": 2, "rel": os.path.relpath(rpath, os.path.dirname(ref_rpath))}
+            reftxt = json.dumps(ref)
             try:
                 r = repr
                 log(f"Moving {r(original)} to {r(file['apath'])} with {r(ref_rpath)}.")
                 rc.write(
                     (config.dst, ref_rpath),
-                    rpath,
+                    reftxt,
                 )
                 return file
             except Exception as EE:
