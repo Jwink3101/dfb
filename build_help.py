@@ -4,6 +4,11 @@
 import os, sys
 import subprocess
 
+COLUMNS = 88
+
+env = os.environ.copy()
+env["COLUMNS"] = str(COLUMNS)
+
 os.chdir(os.path.dirname(__file__))
 
 commands = """\
@@ -32,9 +37,8 @@ for command in commands:
         cmd.append(command)
     cmd.append("--help")
 
-    help = (
-        subprocess.check_output(cmd).decode().replace("usage: dfb.py", "usage: dfb")
-    )  # long comment
+    help = subprocess.check_output(cmd, env=env)
+    help = help.decode().replace("usage: dfb.py", "usage: dfb")
 
     helpmd.append(
         f"""

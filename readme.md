@@ -41,7 +41,7 @@ where the time is *always in UTC time*. When a file is modified at the source, i
 
 ## Install
 
-Just install from github directly. Note that a known issue (see below) is that you may get some PEP517 issues. This will be fixed shortly. You can add `--no-use-pep517`
+Just install from github directly.
 
     $ python -m pip install git+https://github.com/Jwink3101/dfb.git
 
@@ -154,7 +154,19 @@ Simply identify the versions you wish to delete, copy the Real Path, and run
 Afterwards, you should refresh the file listings. Most calls can have a `--refresh` but a simple one is just
 
     $ dfb ls --refresh
-    
+
+## Mount (EXPERIMENTAL)
+
+In its own package is `dfb-mount` installed along with `dfb`. This is **EXPERIMENTAL** at best. It overlays *an rclone mount* and presents the latest (or set) version of the files.
+
+Some notes:
+
+- It does not serve files directly. It overlays an rclone mount. Use `rclone mount --vfs-cache-mode full` for best effect (especially since it will read the remote a lot). Rclone is way better suited for serving the files
+- It is **stateless** (except for an optional cache). It doesn't use the remote database and need-not point to a single backup. You can mount many backups (or the top level of one with many backup destinations) and it'll work just fine. If it can't parse a date, it just provides the file and doesn't do any grouping.
+- Unless using the `--remove-empty-dirs`, empty directories, such as from deleted files, will be shown. Determining if a directory is empty requires walking until it either finds a file or all the way until it doesn't. It is suggested to use the cache with this. You can always use a short cache duration.
+- Logging is incomplete. I still need to fix this
+- Just to repeat, **THIS IS EXPERIMENTAL**. 
+
 ## "FAQs"
 
 (well, nobody is asking but you know what I mean...)
@@ -163,11 +175,14 @@ Afterwards, you should refresh the file listings. Most calls can have a `--refre
 
 Synthetic snapshots, whether from chunk database tools like restic, Kopia, Borg, Duplicacy, etc or via hardlinks like Time Machine and rsync with `--link-dest`, are fundamentally different. They either keep a database of files and blocks or a full, hard-linked, directory structure.
 
-This allows for pruning strategies like "keep one per week" but (a) it is risky to assume the one version of the file you care about is the one you keep, and (b) makes it fundamentally hard to delete specific files (though it *is* possible). dfb on the other hand keeps every version of every file up to the pruned cutoff. But because there is no singular snapshot, you can delete at will. Upload a large file by accident? Delete it on the dest and run with `--refresh` next time. That's it!
+This allows for pruning strategies like "keep one per week" but (a) it is risky to assume the one version of the file you care about is the one you keep, and (b) makes it fundamentally hard to delete specific files (though it *is* possible). dfb on the other hand keeps every version of every file when modified up to the pruned cutoff. But because there is no singular snapshot, you can delete at will. Upload a large file by accident? Delete it on the dest and run with `--refresh` next time. That's it!
 
-Furthermore, this approach means that you can also backup individual directories more often since you are just adding file versions. 
+Other advantages of this approach are:
 
-And, compared to the database tools, it is super easy to restore without the tool itself used to backup. Simple scripting will identify the needed transfers.
+- You can also backup individual directories more often since you are just adding file versions. Synthetic snapshot tools may deduplicate the data but keeps it as its own backup series
+- You can very easily and *natively* see all version of a file. With synthetic backups, it can be done but is harder (depending on the approach).
+    - dfb provides a UI for this but it can also be done manually
+- Compared to the database tools, it is super easy to restore without the tool itself used to backup. Simple scripting will identify the needed transfers.
 
 ### Why only keep 1 second precision?
 
@@ -188,15 +203,19 @@ Note, unlike [rirb][rirb], there is *no need to refresh next time* because the f
 
 **Known Issues**:
 
-- PEP517 and other packaging warnings (should be fixed soon)
 - `--links` doesn't work on local sources. This is an rclone issue. I may write a workaround or just wait for rclone. I haven't decided. See [rclone #6855](https://github.com/rclone/rclone/issues/6855)
+- Logging in `dfb-mount` is not complete nor does it make much sense at the moment.
 
 **Roadmap**:
 
 In no real particular order...
 
-- Web-server, WebDAV server, and/or FUSE for backup. Potentially one that is just a loop-back to an rclone mount (letting rclone handle the details)
+- Web-server, WebDAV server, and/or ~~FUSE~~ (DONE) for backup. Potentially one that is just a loop-back to an rclone mount (letting rclone handle the details)
     - Alternative: symlink creation mode to an rclone mount
+    - Mount TODO
+        - [ ] Logging
+            - [ ] FUSE code
+            - [ ] Mount Code
 - [uncertain] Move file listing to the `rc` interface. Nearly everything else is rc-based for efficiency but file listing isn't. The code is there but it would require different exclusions to be set, it will be harder for the user, and doesn't really save much. Just one minor authorization call.
     - There is also a huge sunk-cost in rcloneapi.py. Oh well!
 - Configurable date formats (dfb can actually read many formats but only write one.)
@@ -208,7 +227,9 @@ In no real particular order...
 
 ### Why does some of the code look weird:
 
-Simple answer: Make nobody happy. [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+Simple answer: [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+I don't love it but it keeps the style consistent. One way to look at a compromise is each side is equally unhappy!
 
 ### I pruned older files. Why do I see those timestamps?
 

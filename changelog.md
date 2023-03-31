@@ -1,5 +1,12 @@
 # Changelog
 
+## 20230331.0 (BETA)
+
+- **EXPERIMENTAL** FUSE mount that overlays an rclone mount (does not serve the remote directly)
+- Cleanup, documentation, etc
+- Fixed version numbering to validate PEP440 and other build errors.
+    - This is still beta, but just isn't in the date-based version number
+
 ## 20230330.0.BETA
 
 - Changed how references are written and saved. The change will not break existing references but older references will not work in the upcoming mounting tools

@@ -10,13 +10,14 @@ DFB_CONFIG = os.environ.get("DFB_CONFIG_FILE", None)
 argv = None
 
 ISODATEHELP = """
-    Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-DD HH:MM:SS) but
-    can be flexible with punctuation, "T"-separators, etc. Can optionally
-    specify a numeric time zone (e.g. -05:00) or 'Z' for UTC. If no timezone is specified, 
+    Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-DD[T]HH:MM:SS) with
+    or without spaces, colons, dashes, "T", etc. Can optionally
+    specify a numeric time zone (e.g. -05:00) or 'Z'. If no timezone is specified, 
     it is assumed *local* time. Alternatively, can specify unix time with a preceding
     'u'. Example: 'u1678560662'. Or can specify a time difference from the current
-    time with any (and only) of the following: second(s), minute(s), hour(s), day(s),
-    and/or week(s). Example: "10 days 1 hour 32 seconds". """
+    time with any (and only) of the following: second[s], minute[s], hour[s], day[s], 
+    week[s]. Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter).
+    """
 
 
 # THis lets me control how argparse exits.
@@ -124,7 +125,7 @@ def parse(argv=None, shebanged=False):
     exe_parent = argparse.ArgumentParser(add_help=False)
     exe_group = exe_parent.add_argument_group(
         title="Execution Settings",
-        description="Precedance follows the order specified here",
+        description="Precedance follows the order specified in this help",
     )
     # exe_group = exe_group0.add_mutually_exclusive_group()
     exe_group.add_argument(
@@ -157,7 +158,7 @@ def parse(argv=None, shebanged=False):
 
     version = "%(prog)s-" + __version__
     if __git_version__:
-        version += f".{__git_version__['version']}"
+        version += f"|{__git_version__['version']}"
     parser.add_argument("--version", action="version", version=version)
 
     subparsers = {}
@@ -216,13 +217,13 @@ def parse(argv=None, shebanged=False):
     #################################################
     ## restore-dir
     #################################################
-
+    _h = "Restore a (sub)directory to a specified location"
     restore_dir = subparsers["restore-dir"] = subpar.add_parser(
         "restore-dir",
-        aliases=["restore"],
+        aliases=["restore"],  # Need to reset below
         parents=[global_parent, config_global, restore_parent, exe_parent],
-        help="Restore a directory (including the root directory) to a specified directory",
-        description="Restore a full directory tree to the specified location",
+        help=_h,
+        description=_h,
     )
     restore_dir.add_argument(
         "--source-dir",
@@ -248,7 +249,7 @@ def parse(argv=None, shebanged=False):
     restore_file = subparsers["restore-file"] = subpar.add_parser(
         "restore-file",
         parents=[global_parent, config_global, restore_parent, exe_parent],
-        help="Restore a file to a specified location or file",
+        help="Restore a file to a specified location, file, or to stdout",
     )
 
     restore_file.add_argument(
