@@ -7,6 +7,7 @@ import gzip as gz
 import re
 import subprocess
 import json
+import itertools
 from textwrap import dedent
 
 p = os.path.abspath("../")
@@ -810,8 +811,137 @@ def test_subdirs():
     assert not os.path.exists("dst/sub2")
 
 
+symlinks_modes = itertools.product(["link", "copy", "skip"], [True, False])
+
+
+@pytest.mark.parametrize("mode,shell", symlinks_modes)
+def test_symlinks(mode, shell):
+    test = testutils.Tester(name="symlinks", src="srcalias:")  # Test with an alias!
+
+    test.config["links"] = mode
+    test.config["upload_logs"] = False
+    test.write_config()
+
+    test.write("src/file1.txt", "File ONE")
+    test.write("src/sub/file2.txt", "File 2")
+    os.symlink("file1.txt", "src/link1.txt")
+    os.symlink("sub/file2.txt", "src/link2.1.txt")
+    os.symlink("file2.txt", "src/sub/link2.2.txt")
+    Path("src/other/").mkdir(exist_ok=True, parents=True)
+    os.symlink("../file1.txt", "src/other/backfile1.txt")
+    os.symlink("../sub/file2.txt", "src/other/backfile2.txt")
+
+    if not shell:
+        test.backup(offset=1)
+    else:
+        test.backup("--shell-script", "back.sh")
+        subprocess.call(
+            """\
+            chmod +x back.sh
+            ./back.sh""",
+            shell=True,
+        )
+        test.call("ls", "--refresh")  # Refresh b/c shell
+
+    if mode == "link":
+        assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
+            "file1.txt",
+            "link1.txt.rclonelink",
+            "link2.1.txt.rclonelink",
+            "other/backfile1.txt.rclonelink",
+            "other/backfile2.txt.rclonelink",
+            "sub/file2.txt",
+            "sub/link2.2.txt.rclonelink",
+        }
+        assert set(testutils.tree("dst")) == {
+            "dst/file1.19700101000001.txt",
+            "dst/link1.txt.19700101000001.rclonelink",
+            "dst/link2.1.txt.19700101000001.rclonelink",
+            "dst/other/backfile1.txt.19700101000001.rclonelink",
+            "dst/other/backfile2.txt.19700101000001.rclonelink",
+            "dst/sub/file2.19700101000001.txt",
+            "dst/sub/link2.2.txt.19700101000001.rclonelink",
+        }
+
+        assert test.read("dst/link1.txt.19700101000001.rclonelink") == "file1.txt"
+        assert test.read("dst/link2.1.txt.19700101000001.rclonelink") == "sub/file2.txt"
+        assert (
+            test.read("dst/other/backfile1.txt.19700101000001.rclonelink")
+            == "../file1.txt"
+        )
+        assert (
+            test.read("dst/other/backfile2.txt.19700101000001.rclonelink")
+            == "../sub/file2.txt"
+        )
+        assert test.read("dst/sub/link2.2.txt.19700101000001.rclonelink") == "file2.txt"
+        assert len(test.tree_sha1s("dst")) == 7
+    elif mode == "copy":
+        assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
+            "file1.txt",
+            "link1.txt",
+            "link2.1.txt",
+            "other/backfile1.txt",
+            "other/backfile2.txt",
+            "sub/file2.txt",
+            "sub/link2.2.txt",
+        }
+        assert set(testutils.tree("dst")) == {
+            "dst/file1.19700101000001.txt",
+            "dst/link1.19700101000001.txt",
+            "dst/link2.1.19700101000001.txt",
+            "dst/other/backfile1.19700101000001.txt",
+            "dst/other/backfile2.19700101000001.txt",
+            "dst/sub/file2.19700101000001.txt",
+            "dst/sub/link2.2.19700101000001.txt",
+        }
+        assert not any(os.path.islink(f) for f in testutils.tree("dst"))
+        assert len(test.tree_sha1s("dst")) == 2
+    elif mode == "skip":
+        assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
+            "file1.txt",
+            "sub/file2.txt",
+        }
+        assert set(testutils.tree("dst")) == {
+            "dst/file1.19700101000001.txt",
+            "dst/sub/file2.19700101000001.txt",
+        }
+        assert len(test.tree_sha1s("dst")) == 2
+
+    # Make sure a second copy doesn't mess with this
+    back2 = test.backup(offset=3)
+    assert back2.modified == back2.moves == back2.deleted == []
+
+    back2 = test.backup("--refresh", offset=5)
+    assert back2.modified == back2.moves == back2.deleted == []
+
+
+def test_symlinks_trick():
+    test = testutils.Tester(name="symlinks_trick")
+    test.config["links"] = "link"
+    test.config["concurrency"] = 1
+    test.config["upload_logs"] = False
+    test.write_config()
+
+    test.write("src/file1.txt", "File ONE")
+    os.symlink("file1.txt", "src/link1.txt")
+    test.write("src/trick.txt.rclonelink", "Not a link")
+
+    test.backup("-v", offset=1)
+
+    assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
+        "link1.txt.rclonelink",
+        "file1.txt",
+        "trick.txt.rclonelink",
+    }
+    assert test.read("dst/link1.txt.19700101000001.rclonelink").strip() == "file1.txt"
+    assert test.read("dst/trick.txt.19700101000001.rclonelink").strip() == "Not a link"
+
+    log = test.logs[-1][0]
+    assert "trick.txt' could not be read. Treating as a file" in log
+
+
 if __name__ == "__main__":
-    test_main()
+    # test_main()
     #     test_shell()
     #     test_log_upload(True)
     #     test_log_upload(False)
@@ -824,6 +954,10 @@ if __name__ == "__main__":
     #     test_missing_ref()
     #     test_override()
     #     test_subdirs()
+    #     for mode, shell in itertools.product(["link", "copy", "skip"], [True, False]):
+    #         test_symlinks(mode, shell)
+    #     test_symlinks_trick()
+
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

@@ -157,7 +157,7 @@ class Tester:
 
     def read(self, path):
         with open(path, "rt") as file:
-            return file.read()
+            return file.read().strip()
 
     @staticmethod
     def sha1(path):

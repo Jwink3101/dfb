@@ -97,12 +97,15 @@ class RC:
         cmd.extend(["--rc-pass", self.password])
         cmd.extend(["--rc-server-read-timeout", "100h"])
         cmd.extend(["--rc-server-write-timeout", "100h"])
+        cmd.extend(["--log-format", ""])
 
         env = os.environ.copy()
         env.update({str(k): str(v) for k, v in self.rclone_env.items()})
         for key in list(env):
             if env[key] == self.DELENV:
                 del env[key]
+        e = {k: v for k, v in env.items() if k not in os.environ}
+        debug(f"rclone call {str(cmd)} with env: {json.dumps(e)}")
 
         self.proc = subprocess.Popen(
             cmd,

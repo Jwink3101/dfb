@@ -128,6 +128,25 @@ The config file can be overridden at the command line by specifying code to eval
         if post:
             filter_flags.extend(('--filter','- *.new'))"
 
+## Symlinks
+
+For local sources, you can configure how to handle links. Due to an [rclone bug #6855](https://github.com/rclone/rclone/issues/6855), dfb handles symlinks on its own for backups. This works for both the regular and `--shell-script` modes. However, dfb *does not support restore of symlinks*. After restore, there will be `.rclonelink` files that used to be symlinks. These can be manually (or simply Python script) fixed later:
+
+```python
+from pathlib import Path
+
+RESTORE_DIR = "."
+
+links = Path(RESTORE_DIR).rglob("*.rclonelink")
+for link in links:
+    dst = str(link).removesuffix(".rclonelink")
+    src = link.read_text()
+    Path(dst).symlink_to(src)
+    # link.unlink()  # OPTIONAL
+```
+
+Note that this will fail if for some reason there are files called `.rclonelink` that aren't intended to be links
+
 ## Pruning
 
 You can prune dfb by removing *unneeded* files at snapshots older than a set time. At it's most basic form, the pruning algorithm is simply to delete all files older than the specified time *except* the last one. This is demonstrated below.
@@ -165,6 +184,7 @@ Some notes:
 - It is **stateless** (except for an optional cache). It doesn't use the remote database and need-not point to a single backup. You can mount many backups (or the top level of one with many backup destinations) and it'll work just fine. If it can't parse a date, it just provides the file and doesn't do any grouping.
 - Unless using the `--remove-empty-dirs`, empty directories, such as from deleted files, will be shown. Determining if a directory is empty requires walking until it either finds a file or all the way until it doesn't. It is suggested to use the cache with this. You can always use a short cache duration.
 - Logging is incomplete. I still need to fix this
+- Does not resolve symlink files.
 - Just to repeat, **THIS IS EXPERIMENTAL**. 
 
 ## "FAQs"
@@ -183,6 +203,14 @@ Other advantages of this approach are:
 - You can very easily and *natively* see all version of a file. With synthetic backups, it can be done but is harder (depending on the approach).
     - dfb provides a UI for this but it can also be done manually
 - Compared to the database tools, it is super easy to restore without the tool itself used to backup. Simple scripting will identify the needed transfers.
+
+### How is this better than native versioning on some remotes
+
+Remotes like OneDrive and consumer storage that offer versioning usually only do it via the website and requires you manually restore for each file. Miserable experience though it'll do in a pinch.
+
+However, some remotes for rclone, like B2 and S3, offer native versions with built in flags in rclone that let you do things like dfb. Are they better? Maybe. They are different and to each their own. Personally, I like to *own* my backup process and not rely on the backend storage. I also like the freedom to move storage if I need.
+
+But the real answer is to use both! When you prune (or get hacked/randomwared), you have another backup!
 
 ### Why only keep 1 second precision?
 
@@ -203,8 +231,10 @@ Note, unlike [rirb][rirb], there is *no need to refresh next time* because the f
 
 **Known Issues**:
 
-- `--links` doesn't work on local sources. This is an rclone issue. I may write a workaround or just wait for rclone. I haven't decided. See [rclone #6855](https://github.com/rclone/rclone/issues/6855)
 - Logging in `dfb-mount` is not complete nor does it make much sense at the moment.
+- Restore:
+    - It is possible to create edge cases with symlink handling by having non-symlinks on the source names `<name>.rclonelink`. This is still mostly handled but can cause issues with some sources
+    - Restore of symlinks is manual. See above for a Python snippet to rebuild links.
 
 **Roadmap**:
 

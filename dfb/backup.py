@@ -32,8 +32,14 @@ from .utils import (
     listify,
 )
 
+_r = repr
+
 
 class NoCommonHashError(ValueError):
+    pass
+
+
+class LinkError(ValueError, OSError):
     pass
 
 
@@ -148,9 +154,12 @@ class Backup:
     def list_src(self, stats=None):
         config = self.config
 
-        compute_hashes = (
-            config.get_hashes or config.compare == "hash" or config.renames == "hash"
-        )
+        fsroot = config.rc.features(config.src).get("Root", "")
+        if fsroot and not os.path.exists(fsroot):
+            fsroot = ""
+
+        flags = []
+
         modtime = (
             config.get_modtime
             or config.compare == "mtime"
@@ -158,7 +167,9 @@ class Backup:
             or config.renames == "mtime"
             or (compute_hashes and config.reuse_hashes == "mtime")
         )
-        debug(f"{compute_hashes = }, {modtime = }")
+        compute_hashes = any(
+            [config.get_hashes, config.compare == "hash", config.renames == "hash"]
+        )
 
         if compute_hashes:
             hash_flags = ["--hash"]
@@ -168,12 +179,21 @@ class Backup:
                 for htype in config.hash_type:
                     hash_flags.extend(["--hash-type", htype])
 
-        subdir = config.cliconfig.subdir or ""  # Make it empty instead of None
+        debug(f"{compute_hashes = }, {modtime = }")
 
+        subdir = config.cliconfig.subdir or ""  # Make it empty instead of None
         if subdir:
-            log(
-                f"WARNING: subdir {repr(subdir)} specified. Absolute/anchored filters will break!"
-            )
+            msg = f"WARNING: subdir {repr(subdir)} specified. Filters may break!"
+            log(msg)
+
+        if config.links == "link":
+            flags.append("--links")
+        elif config.links == "skip":
+            flags.append("--skip-links")
+        else:  # == 'copy'
+            pass  # Already dealt with in config
+
+        hf0 = hash_flags if (compute_hashes and not config.reuse_hashes) else []
 
         rcfiles = config.src_rclone.listremote(
             filter_flags=config.filter_flags,
@@ -185,7 +205,7 @@ class Backup:
             epoch_time=True,
             # This shouldn't be needed and I should use hashes and hashtypes but they
             # do not work. I'll look into fixing that later but for now, if it ain't broke...
-            flags=hash_flags if (compute_hashes and not config.reuse_hashes) else [],
+            flags=flags + hf0,
             subdir=subdir,
         )
 
@@ -202,6 +222,19 @@ class Backup:
 
             if hashes := file.pop("Hashes", None):
                 new["checksum"] = hashes
+
+            if new["apath"].endswith(".rclonelink") and config.links == "link":
+                new["linkdata"] = link = {}
+                link["real_apath"] = new["apath"].removesuffix(".rclonelink")
+                try:
+                    lfull = os.path.join(fsroot, link["real_apath"])
+                    link["link_dest"] = os.readlink(lfull)
+                except OSError:
+                    m = f"{_r(link['real_apath'])} could not be read."
+                    if os.path.islink(link["real_apath"]):
+                        raise LinkError(m)
+                    debug(m + " Treating as a file")
+                    del new["linkdata"]  # To treat as a file
 
             for k, v in file.items():
                 if k in IGNORED_FILE_DATA:
@@ -243,7 +276,7 @@ class Backup:
                 metadata=False,
                 only="files",
                 # epoch_time=True,
-                flags=hash_flags,
+                flags=flags + hash_flags,
             )
 
             # Update the item. This will update in files too
@@ -426,10 +459,19 @@ class Backup:
                 sfile = rcpathjoin(self.config.src, file["apath"])
                 dfile = rcpathjoin(self.config.dst, file["rpath"])
 
+                link = file.get("linkdata", None)
+
                 if not self.config.dst_atomic_transfer:
                     dfile, swap = swap_name(dfile), dfile
 
-                out.append(shlex.join(cmd + [sfile, dfile]))
+                if link:
+                    echo = shlex.join(["printf", link["link_dest"]])
+                    cmdt = cmd.copy()
+                    cmdt[cmdt.index("copyto")] = "rcat"
+                    rcat = shlex.join(cmdt + [dfile])
+                    out.append(f"{echo} | {rcat}")
+                else:
+                    out.append(shlex.join(cmd + [sfile, dfile]))
                 if not self.config.dst_atomic_transfer:
                     out.append(shlex.join(cmd + [dfile, swap]))
             return "\n".join(out)
@@ -441,6 +483,9 @@ class Backup:
             try:
                 sfile = self.config.src, file["apath"]
                 dfile = self.config.dst, file["rpath"]
+
+                link = file.get("linkdata", None)
+
                 msg = f"Uploading {repr(file['apath'])} to {repr(file['rpath'])}"
 
                 if not self.config.dst_atomic_transfer:
@@ -450,14 +495,20 @@ class Backup:
                     msg += f" via {repr(sname)}"
 
                 log(msg)
-                rc.copyfile(
-                    src=sfile,
-                    dst=dfile,
-                    _config={
-                        "NoCheckDest": True,
-                        "metadata": self.config.metadata,
-                    },
-                )
+
+                if link:
+                    rc.write(dfile, link["link_dest"], _config={"NoCheckDest": True})
+                    m = f"apath = {_r(file['apath'])} is a LINK to {_r(link['link_dest'])}"
+                    debug(m)
+                else:
+                    rc.copyfile(
+                        src=sfile,
+                        dst=dfile,
+                        _config={
+                            "NoCheckDest": True,
+                            "metadata": self.config.metadata,
+                        },
+                    )
                 if not self.config.dst_atomic_transfer:
                     log(f"Swapping {repr(sname)} --> {repr(file['rpath'])}")
                     rc.movefile(
@@ -544,7 +595,7 @@ class Backup:
 
                 dst = rcpathjoin(config.dst, ref_rpath)
 
-                echo = shlex.join(["echo", reftxt])
+                echo = shlex.join(["printf", reftxt])
                 rcat = shlex.join(cmd + [dst])
 
                 out.append(f"{echo} |  {rcat}")

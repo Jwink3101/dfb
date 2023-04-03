@@ -247,6 +247,7 @@ class Config:
             "dst_compare": {"mtime", "size", "hash", None},
             "renames": {"size", "mtime", "hash", False, None},
             "reuse_hashes": {"size", "mtime", False, None},
+            "links": {"skip", "link", "copy"},
         }
 
         for key, values in allowed.items():
@@ -267,6 +268,9 @@ class Config:
         )
         if self._config["dst_renames"] is None:  # explicit because could be False
             self._config["dst_renames"] = self._config["renames"]
+
+        if self._config["links"] == "copy":
+            self._config["rclone_flags"].append("--copy-links")
 
     def __getattr__(self, attr):
         return self._config[attr]
@@ -341,7 +345,7 @@ filter_flags = []
 # Example: ["--config", "path/to/config"]
 #
 # Note: Not all flags are compatible and may break the behavior, e.g. --progress
-# Flags related to links such as "--links", "--copy-links", or "--skip-links" go here.
+# Do NOT use flags like --links, --copy-links, or --skip-links here. See links below
 rclone_flags = []
 
 # The following are added to the existing environment.
@@ -354,6 +358,19 @@ rclone_flags = []
 #    > rclone_env = {'RCLONE_CACHE_DIR':'my/cache/dir'}
 # Paths should be absolute.
 rclone_env = {}
+
+# Due to https://github.com/rclone/rclone/issues/6855 in rclone, dfb manually
+# handles links. This isn't perfect and there may be minor edge cases around non-local
+# remotes with files ending in .rclonelink.
+# Options:
+#   'skip' : Same as --skip-links (DEFAULT)_
+#   'link' : Same as --links. Will create a .rclonelink file
+#   'copy' : Same as --copy-links. Will copy the file itself
+#
+# If using a non-local remote, ignore this.
+# Note that symlinks are not restored. The will maintain the rclonelink extension but this
+# can be easily fixed after restore.
+links = 'skip' # {'skip','link','copy'}
 
 # This sets the number of individual file transfers at a time and the general
 # concurrency of rclone calls. Note that there are other rclone flags that will

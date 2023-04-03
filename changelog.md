@@ -1,5 +1,9 @@
 # Changelog
 
+## 20230402.0 (BETA)
+
+- Adds support for symlinks on a local source. It is not super robust but it works for most cases. Note that dfb does not restore the symlinks as symlinks. It restores them as `.rclonelink` files which can be easily turned into symlinks later. See an example in the readme
+
 ## 20230331.0 (BETA)
 
 - **EXPERIMENTAL** FUSE mount that overlays an rclone mount (does not serve the remote directly)
