@@ -27,6 +27,7 @@ from signal import signal, SIGINT, SIG_DFL
 from stat import S_IFDIR
 from traceback import print_exc
 
+_r = repr
 
 try:
     from functools import partial
