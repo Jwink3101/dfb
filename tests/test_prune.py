@@ -278,10 +278,57 @@ def test_modes():
         print(fp.read())
 
 
+def test_subdir():
+    test = testutils.Tester(name="prune_subdir")
+    test.write_config()
+
+    vq = ["-q"]
+
+    test.write_pre("src/nothing.txt", "do nothing")
+    test.write_pre("src/mod.txt", "will mod .")
+    test.write_pre("src/sub1/mod_sub.txt", "will mod in sub .")
+    test.write_pre("src/sub2/move_at_5.txt", "will move")
+    test.backup(offset=1)
+
+    test.write_pre("src/mod.txt", "will mod ..")
+    test.write_pre("src/sub1/mod_sub.txt", "will mod in sub ..")
+    test.backup(offset=3)
+
+    test.write_pre("src/mod.txt", "will mod ...")
+    test.write_pre("src/sub1/mod_sub.txt", "will mod in sub ...")
+    test.move("src/sub2/move_at_5.txt", "src/new/NEW.txt")
+    test.backup(offset=5)
+
+    test.write_post("src/new/NEW.txt", "neww")
+    test.backup(offset=7)
+
+    # Test it
+    assert test.call("prune", "-n", "u4", *vq).rpaths == {
+        ("mod.19700101000001.txt", 10),
+        ("sub1/mod_sub.19700101000001.txt", 17),
+    }
+    assert test.call("prune", "-n", "u4", "--subdir", "sub1").rpaths == {
+        ("sub1/mod_sub.19700101000001.txt", 17)
+    }
+    assert test.call("prune", "-n", "u6", "--subdir", "sub2", *vq).rpaths == set()
+
+    assert test.call("prune", "-n", "u8", "--subdir", "sub2", *vq).rpaths == {
+        ("sub2/move_at_5.19700101000001.txt", 9)
+    }
+    assert test.call("prune", "-n", "u8", *vq).rpaths == {
+        ("mod.19700101000003.txt", 11),
+        ("sub1/mod_sub.19700101000001.txt", 17),
+        ("mod.19700101000001.txt", 10),
+        ("sub1/mod_sub.19700101000003.txt", 18),
+        ("sub2/move_at_5.19700101000001.txt", 9),
+    }
+
+
 if __name__ == "__main__":
     # test_basic_cases()
     # test_moves()
     # test_modes()
+    # test_subdir()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

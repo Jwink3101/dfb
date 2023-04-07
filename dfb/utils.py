@@ -16,6 +16,8 @@ from . import log, debug
 
 tsrep = namedtuple("timestamps", ("ts", "dt", "obj", "pretty"))
 
+_r = repr
+
 
 def time2all(dt_or_ts):
     """Convert from dt or ts to all formats"""

@@ -8,6 +8,8 @@ import json
 from . import __version__, log, debug
 from .utils import MyRow
 
+_r = repr
+
 
 def sqldebug(sql):
     sql = "\n".join(line for line in sql.split("\n") if line.strip())

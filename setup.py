@@ -38,7 +38,7 @@ try:
     shutil.move("dfb/__init__.py", "_tmp.py")
     with open("_tmp.py") as fp:
         init = fp.read()
-    init = init.replace("__git_version__ = None", f"__git_version__ = {repr(git)}")
+    init = init.replace("__git_version__ = None", f"__git_version__ = {_r(git)}")
     with open("dfb/__init__.py", "wt") as fp:
         fp.write(init)
 

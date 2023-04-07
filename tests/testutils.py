@@ -18,6 +18,8 @@ import dfb.cli
 import dfb.dstdb
 from dfb.rcloneapi import Rclone as RcloneAPI
 
+_r = repr
+
 dfb.cli._TESTMODE = True
 
 
@@ -73,7 +75,7 @@ class Tester:
     def write_config(self):
         with open(self.configfile, "wt") as fobj:
             for key, val in self.config.items():
-                print(f"{key} = {repr(val)}", file=fobj)
+                print(f"{key} = {_r(val)}", file=fobj)
 
         self.config_obj = dfb.configuration.Config(self.configfile).parse()
         self.dstdb = dfb.dstdb.DFBDST(self.config_obj)

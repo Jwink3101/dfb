@@ -33,6 +33,8 @@ import time
 
 import logging
 
+_r = repr
+
 logger = logging.getLogger(__name__)
 
 from .timestamps import timestamp_parser
@@ -437,9 +439,7 @@ class Rclone:
         with tempfile.NamedTemporaryFile(delete=False, mode="wt") as fp:
             for file in files:
                 if file.startswith(".."):
-                    msg = (
-                        f"Will not upload files above specified location. {repr(file)}"
-                    )
+                    msg = f"Will not upload files above specified location. {_r(file)}"
                     warnings.warn(msg)
                 print(file, file=fp)
 
@@ -914,7 +914,7 @@ class Rclone:
         )
 
     def __repr__(self):
-        return f"Rclone(remote={repr(self.remote)})"
+        return f"Rclone(remote={_r(self.remote)})"
 
     def __truediv__(self, new):
         return RcloneFile(self, new)

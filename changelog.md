@@ -1,5 +1,10 @@
 # Changelog
 
+## 20230407.0 (BETA)
+
+- If any part fails, it'll keep going until deletes and references happen
+- Adds pruning only a subdir. Still have to compute all prunes to ensure there aren't references but will then filter them.
+
 ## 20230402.0 (BETA)
 
 - Adds support for symlinks on a local source. It is not super robust but it works for most cases. Note that dfb does not restore the symlinks as symlinks. It restores them as `.rclonelink` files which can be easily turned into symlinks later. See an example in the readme

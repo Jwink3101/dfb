@@ -496,7 +496,7 @@ for a reference file
 ```text
 usage: dfb prune [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                  [-o 'OPTION = VALUE'] [--refresh] [-n] [-i]
-                 [--shell-script DEST or -]
+                 [--shell-script DEST or -] [--subdir dir]
                  when
 
 positional arguments:
@@ -515,6 +515,9 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  --subdir dir          Prune only files in 'dir'. In order to ensure that references
+                        do not break, this is mostly just a filter of what will be
+                        pruned rather than a major performance enhancement.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing

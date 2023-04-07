@@ -12,6 +12,8 @@ from .utils import swap_name, tabulate, bytes2human
 from .timestamps import timestamp_parser
 from .rclone import rcpathjoin
 
+_r = repr
+
 # Module CLIlisting
 
 
@@ -96,7 +98,7 @@ def ls(config):
         table = [row[:2] + row[-1:] for row in table]
 
     if not table:
-        log.print(f"No files under {repr(args.path)}. Check the path and the date")
+        log.print(f"No files under {_r(args.path)}. Check the path and the date")
         return
 
     table = tabulate(table)
@@ -110,7 +112,7 @@ def file_versions(config):
     versions = dstdb.file_versions(args.filepath, count_refs=args.ref_count)
 
     # Build output
-    out = [f"file: {repr(args.filepath)}"]
+    out = [f"file: {_r(args.filepath)}"]
 
     table = []
     if not args.no_header:

@@ -8,6 +8,8 @@ from functools import partial, partialmethod
 import io
 from threading import Lock
 
+_r = repr
+
 LOCK = Lock()
 _TEMPDIR = False  # Just used in testing
 
@@ -92,7 +94,7 @@ class Config:
         try:
             self.configpath = Path(configpath).resolve()  # make it absolute
         except FileNotFoundError:
-            raise FileNotFoundError(f"Couldn't find {repr(configpath)}")
+            raise FileNotFoundError(f"Couldn't find {_r(configpath)}")
         self.add_params = add_params or {}
 
         self.now = nowfun()
@@ -292,7 +294,7 @@ class Config:
             cfg["rclone_env"]["RCLONE_CONFIG_PASS"] = "**REDACTED**"
 
         contents = ", ".join(
-            f"{k}={repr(cfg[k])}" for k in self._config_keys if k in self._config
+            f"{k}={_r(cfg[k])}" for k in self._config_keys if k in self._config
         )
         return f"Config({contents})"
 

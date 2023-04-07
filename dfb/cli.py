@@ -4,6 +4,8 @@ from functools import partial
 
 from . import log, debug, __version__, __git_version__
 
+_r = repr
+
 _TESTMODE = False
 
 DFB_CONFIG = os.environ.get("DFB_CONFIG_FILE", None)
@@ -52,10 +54,10 @@ def parse(argv=None, shebanged=False):
         (Required) Specify config file. Can also be specified via the 
         $DFB_CONFIG_FILE environment variable or is implied if executing the config
         file itself. $DFB_CONFIG_FILE is currently 
-        {('set to ' + repr(DFB_CONFIG)) if DFB_CONFIG else 'not set'}. 
+        {('set to ' + _r(DFB_CONFIG)) if DFB_CONFIG else 'not set'}. 
         """
     if shebanged:
-        config_help += f" Currently implied as {repr(shebanged)}."
+        config_help += f" Currently implied as {_r(shebanged)}."
     config_global_group.add_argument(
         "--config",
         metavar="file",
@@ -399,7 +401,9 @@ def parse(argv=None, shebanged=False):
             List all timestamps in the backup. Note that this will include
             ones that were nominally pruned but without all files""",
     )
-
+    #################################################
+    ## Pruning
+    #################################################
     prune = subparsers["prune"] = subpar.add_parser(
         "prune",
         epilog="""
@@ -419,6 +423,16 @@ def parse(argv=None, shebanged=False):
         Specify file modification prune time. The modification time of a file is when
         the *next* file was written and not the original timestamp.
         {ISODATEHELP}.""",
+    )
+    prune.add_argument(
+        "--subdir",
+        default="",
+        metavar="dir",
+        help="""
+            Prune only files in '%(metavar)s'. In order to ensure that references do not
+            break, this is mostly just a filter of what will be pruned rather than a
+            major performance enhancement.
+            """,
     )
 
     args = parser.parse_args(argv)
@@ -499,7 +513,7 @@ def _cli(cliconfig):
 
         if cliconfig.command == "init":
             config._write_template(force=cliconfig.force_overwrite)
-            log.print(f"New config in {repr(cliconfig.config)}")
+            log.print(f"New config in {_r(cliconfig.config)}")
 
             return
 
@@ -563,7 +577,7 @@ def _cli(cliconfig):
     except Exception as E:
         log("ERROR: " + str(E), file=sys.stderr, verbosity=0)
         log(
-            f"ERROR Occured. See logs (including debug) at {repr(str(config.tmpdir.resolve()))}",
+            f"ERROR Occured. See logs (including debug) at {_r(str(config.tmpdir.resolve()))}",
             file=sys.stderr,
             verbosity=0,
         )

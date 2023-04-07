@@ -4,6 +4,8 @@ import re
 
 from . import debug, log
 
+_r = repr
+
 
 def timestamp_parser(timestamp, aware=False, utc=False, epoch=False, now=None):
     """
@@ -48,7 +50,7 @@ def timedelta_parser(deltastr):
             delta[key] = float(val.group(1))
     if delta:
         try:  # not worth failing over
-            debug(f"Processed {repr(deltastr0)} to {delta}")
+            debug(f"Processed {_r(deltastr0)} to {delta}")
         except:
             pass
         return datetime.timedelta(**delta)
@@ -92,6 +94,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     --------
     datetime object or epoch float
     """
+    timestamp0 = timestamp
     if isinstance(timestamp, str) and (
         timestamp.startswith("i") or timestamp.startswith("u")
     ):
@@ -136,7 +139,8 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     n = sum(c in string.digits for c in timestamp)
     if n <= 6:  # This won't catch them all but still will catch some.
         raise ValueError(
-            "MUST at least a FOUR digit year, two digit month, and two digit day"
+            "MUST at least a FOUR digit year, two digit month, and two digit day. "
+            f"Specified: {_r(timestamp0)}"
         )
     if n == 8:
         timestamp = f"{timestamp} 00:00:00"

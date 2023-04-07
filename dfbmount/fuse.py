@@ -1422,7 +1422,7 @@ class LoggingMixIn:
     log = logging.getLogger("fuse.log-mixin")
 
     def __call__(self, op, path, *args):
-        self.log.debug("-> %s %s %s", op, path, repr(args))
+        self.log.debug("-> %s %s %s", op, path, _r(args))
         ret = "[Unhandled Exception]"
         try:
             ret = getattr(self, op)(path, *args)
@@ -1431,4 +1431,4 @@ class LoggingMixIn:
             ret = str(e)
             raise
         finally:
-            self.log.debug("<- %s %s", op, repr(ret))
+            self.log.debug("<- %s %s", op, _r(ret))

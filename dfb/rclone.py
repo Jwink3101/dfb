@@ -20,8 +20,11 @@ from .rcloneapi import RcloneFile
 from .utils import randstr, dictify, listify
 from .timestamps import timestamp_parser
 
+
 import requests
 from requests.auth import HTTPBasicAuth
+
+_r = repr
 
 
 class RcloneError(ValueError):
@@ -157,6 +160,7 @@ class RC:
             self.proc.wait(timeout=1)
         except:
             self._kill()
+        return self
 
     def _kill(self):
         try:
@@ -166,6 +170,7 @@ class RC:
 
     def kill_at_exit(self):
         atexit.register(self._kill)
+        return self
 
     def _cpmvfile(self, *, cpmv, src, dst, use_async=False, **params):
         """

@@ -22,6 +22,8 @@ import testutils
 # testing
 import pytest
 
+_r = repr
+
 
 def test_main():
     import json
@@ -238,7 +240,7 @@ def test_main():
 
     test.config["rclone_env"]["RCLONE_CONFIG_PASS"] = "secret"
     test.write_config()
-    r = repr(test.config_obj)
+    r = _r(test.config_obj)
     assert "secret" not in r
     assert "**REDACTED**" in r
 
@@ -940,8 +942,42 @@ def test_symlinks_trick():
     assert "trick.txt' could not be read. Treating as a file" in log
 
 
+def test_keep_going_on_fail():
+    """
+    Make sure you keep running even if there is a failure
+    """
+    test = testutils.Tester(name="errs")
+    test.write_config()
+
+    test.write_pre("src/mod.txt", "mod me .")
+    test.write_pre("src/del.txt", "del me ..")
+    test.write_pre("src/mv.txt", "move me ...")
+
+    test.backup(offset=1)
+
+    test.write_post("src/mod.txt", "moded me .")
+    os.unlink("src/del.txt")
+    test.move("src/mv.txt", "src/moved.txt")
+
+    try:
+        from dfb import _FAIL
+
+        _FAIL.update({"backup_transfer", "backup_reference", "backup_delete"})
+
+        test.backup(offset=3)
+    finally:
+        _FAIL.difference_update(
+            {"backup_transfer", "backup_reference", "backup_delete"}
+        )
+
+    # make sure it keeps going
+    rem = {dict(a)["apath"] for a in test.remote_snapshot()}
+    assert rem == {"mod.txt", "moved.txt"}
+    assert test.read("dst/mod.19700101000003.txt") == "moded me ."
+
+
 if __name__ == "__main__":
-    # test_main()
+    test_main()
     #     test_shell()
     #     test_log_upload(True)
     #     test_log_upload(False)
@@ -957,6 +993,7 @@ if __name__ == "__main__":
     #     for mode, shell in itertools.product(["link", "copy", "skip"], [True, False]):
     #         test_symlinks(mode, shell)
     #     test_symlinks_trick()
+    #     test_keep_going_on_fail()
 
     print("=" * 50)
     print(" All Passed ".center(50, "="))

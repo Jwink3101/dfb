@@ -15,6 +15,8 @@ from .timestamps import timestamp_parser
 from .rclone import IGNORED_FILE_DATA
 from .threadmapper import thread_map_unordered as tmap
 
+_r = repr
+
 
 class NoTimestampInNameError(ValueError):
     pass
@@ -159,7 +161,7 @@ class DFBDST:
         for file in files:
             try:
                 apath, ts, flag = rpath2apath(file["Path"])
-            except NoTimestampInNameError:
+            except (ValueError, NoTimestampInNameError):
                 debug(f"Could not find timestamp for {file['Path']}. Ignoring")
                 continue
             c += 1
@@ -213,10 +215,10 @@ class DFBDST:
 
             ver = referent["ver"]
             if ver == 1:
-                debug(f"Reference {repr(refferer)} is v1 (implied)")
+                debug(f"Reference {_r(refferer)} is v1 (implied)")
                 return file, referent["path"]
             elif ver == 2:
-                debug(f"Reference {repr(refferer)} is v2")
+                debug(f"Reference {_r(refferer)} is v2")
                 path = os.path.join(os.path.dirname(refferer), referent["rel"])
                 path = os.path.normpath(path)
                 return file, path
@@ -236,7 +238,7 @@ class DFBDST:
             ).fetchone()
 
             if not row:
-                txt = f"WARNING: File {repr(refferer)} references {repr(referent)} "
+                txt = f"WARNING: File {_r(refferer)} references {_r(referent)} "
                 txt += "but it is missing. Will just be treated as deleted"
                 log(txt, verbosity=0)
                 row = DFBDST.fullrow2dict(file)

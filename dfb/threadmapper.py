@@ -2,6 +2,8 @@ from threading import Thread
 from queue import Queue
 import os
 
+_r = repr
+
 
 class _KILL:
     pass

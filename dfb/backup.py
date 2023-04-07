@@ -109,14 +109,28 @@ class Backup:
             else:
                 with open(cliconfig.shell_script, "wt") as fp:
                     fp.write("\n".join(out))
-                log(f"Shell script written to {repr(cliconfig.shell_script)}")
+                log(f"Shell script written to {_r(cliconfig.shell_script)}")
             return
 
-        else:
-            # Step 4: Transfer
+        err = []
+        # Step 4: Transfer
+        try:
             self.transfer()
+        except ValueError:
+            err.append("transfer")
+
+        try:
             self.reference()
+        except ValueError:
+            err.append("reference")
+
+        try:
             self.delete()
+        except ValueError:
+            err.append("delete")
+
+        if err:
+            raise ValueError(f"Error occured in {', '.join(err)}")
 
         stats = self.run_stats()
         log("-----")
@@ -183,7 +197,7 @@ class Backup:
 
         subdir = config.cliconfig.subdir or ""  # Make it empty instead of None
         if subdir:
-            msg = f"WARNING: subdir {repr(subdir)} specified. Filters may break!"
+            msg = f"WARNING: subdir {_r(subdir)} specified. Filters may break!"
             log(msg)
 
         if config.links == "link":
@@ -311,7 +325,7 @@ class Backup:
             # information at source. This enables things like using mtime for
             # source-to-source but not for source-to-dest
             if dfile["dstinfo"]:
-                debug(f"Updating {repr(apath)} with src info")
+                debug(f"Updating {_r(apath)} with src info")
                 new = dfile.copy()
                 new.update(sfile)
                 new["dstinfo"] = 0
@@ -324,7 +338,7 @@ class Backup:
             config.dst_compare if dfile["dstinfo"] else self.config.compare
         )
 
-        msg = [f"Compare {repr(sfile['apath'])} with {attrib = }."]
+        msg = [f"Compare {_r(sfile['apath'])} with {attrib = }."]
         try:
             s = sfile.get("size", "src_missing_size")
             d = dfile.get("size", "dst_missing_size")
@@ -411,10 +425,10 @@ class Backup:
             if len(dfiles) == 1:
                 self.moves.append((dfiles[0], sfile))  # dfile,moved sfile
             elif not dfiles:
-                debug(f"no moves for deleted file {repr(apath)}")
+                debug(f"no moves for deleted file {_r(apath)}")
                 continue
             else:
-                log(f"Too many matches for {repr(apath)}. Not moving")
+                log(f"Too many matches for {_r(apath)}. Not moving")
 
         # Now we need to remove the moves from new and delete
         undelete = set()
@@ -486,13 +500,13 @@ class Backup:
 
                 link = file.get("linkdata", None)
 
-                msg = f"Uploading {repr(file['apath'])} to {repr(file['rpath'])}"
+                msg = f"Uploading {_r(file['apath'])} to {_r(file['rpath'])}"
 
                 if not self.config.dst_atomic_transfer:
                     swap = dfile
                     sname = swap_name(file["rpath"])
                     dfile = self.config.dst, sname
-                    msg += f" via {repr(sname)}"
+                    msg += f" via {_r(sname)}"
 
                 log(msg)
 
@@ -510,7 +524,7 @@ class Backup:
                         },
                     )
                 if not self.config.dst_atomic_transfer:
-                    log(f"Swapping {repr(sname)} --> {repr(file['rpath'])}")
+                    log(f"Swapping {_r(sname)} --> {_r(file['rpath'])}")
                     rc.movefile(
                         src=dfile,
                         dst=swap,
@@ -521,7 +535,7 @@ class Backup:
                     )
                 return file
             except Exception as EE:
-                msg = [f"ERROR: Could not upload {repr(file['apath'])}."]
+                msg = [f"ERROR: Could not upload {_r(file['apath'])}."]
                 msg.append(f"Error: {EE}")
                 log("\n".join(msg))
                 with LOCK:
@@ -620,7 +634,7 @@ class Backup:
                 )
                 return file
             except Exception as EE:
-                msg = [f"ERROR: Could not upload {repr(file['apath'])}."]
+                msg = [f"ERROR: Could not upload {_r(file['apath'])}."]
                 msg.append(f"Error: {EE}")
                 log("\n".join(msg))
                 with LOCK:
@@ -636,6 +650,12 @@ class Backup:
             msg = "ERROR: At least one reference (move) did not work."
             log(msg)
             raise ValueError(msg)
+
+        # For testing only
+        from . import _FAIL
+
+        if "backup_reference" in _FAIL:
+            raise ValueError()
 
     def delete(self, shell_script=False):
         config = self.config
@@ -677,14 +697,14 @@ class Backup:
         def _delete(file):
             dfile = file["rpath"]
             try:
-                log(f"Deleting {repr(file['apath'])} with {repr(dfile)}.")
+                log(f"Deleting {_r(file['apath'])} with {_r(dfile)}.")
                 rc.write(
                     (config.dst, dfile),
                     b"DEL",
                 )
                 return file
             except subprocess.CalledProcessError as EE:
-                log(f"ERROR: Could not upload {repr(file['rpath'])}.")
+                log(f"ERROR: Could not upload {_r(file['rpath'])}.")
                 log(f"Error: {EE}")
                 with LOCK:
                     self.errcount += 1
@@ -702,6 +722,12 @@ class Backup:
             log(msg)
             raise ValueError(msg)
 
+        # For testing only
+        from . import _FAIL
+
+        if "backup_delete" in _FAIL:
+            raise ValueError()
+
     def action_summary(self):
         self.action_summary_text = []
 
@@ -713,25 +739,25 @@ class Backup:
         self.action_summary_text.append(m)
         log(m)
         for file in self.new:
-            _p(f"   {repr(file)}")
+            _p(f"   {_r(file)}")
 
         m = f"Modified: {self.summary(self.modified)}"
         self.action_summary_text.append(m)
         log(m)
         for file in self.modified:
-            _p(f"   {repr(file)}")
+            _p(f"   {_r(file)}")
 
         m = f"Deleted: {self.summary(self.deleted,src=False)}"
         self.action_summary_text.append(m)
         log(m)
         for file in self.deleted:
-            _p(f"   {repr(file)}")
+            _p(f"   {_r(file)}")
 
         m = f"Moves: {self.summary([f[0]['apath'] for f in self.moves],src=False)}"
         self.action_summary_text.append(m)
         log(m)
         for file in self.moves:
-            _p(f"   {repr(file[0]['apath'])} --> {repr(file[1]['apath'])}")
+            _p(f"   {_r(file[0]['apath'])} --> {_r(file[1]['apath'])}")
 
     def summary(self, files, src=True):
         flist = self.src_files if src else self.dst_files
@@ -809,7 +835,7 @@ class Backup:
 
         for log_dest in log_dests:
             dtxt = rcpathjoin(*listify(log_dest))
-            log(f"Uploading log to {repr(dtxt)}")
+            log(f"Uploading log to {_r(dtxt)}")
             config.rc.copyfile(
                 src=log_copy,
                 dst=log_dest,
@@ -880,7 +906,7 @@ class StatsThread(Thread):
             dt = time_format(stats["elapsedTime"])
 
             msg = [f"STATS: Elapsed {dt};"]
-            msg.append(f"Transfering {len(stats['transferring'])};")
+            msg.append(f"Transfering {len(stats.get('transferring',0))};")
             msg.append(f"Avg. Speed {speednum:0.2f} {speedunits}/sec;")
             # stats['totalTransfers'] includes active so use self.fcount
 

@@ -8,6 +8,8 @@ import subprocess
 import shlex
 from operator import itemgetter
 
+_r = repr
+
 from . import log, debug, LOCK
 from .utils import bytes2human, shell_header
 from .timestamps import timestamp_parser
@@ -26,8 +28,7 @@ class Prune:
         self.dstdb = PruneableDFBDST(config)
 
         log(f"Pruning to {timestamp_parser(self.when,aware=True).isoformat()}")
-
-        self.rpaths = self.dstdb.prune_rpaths(self.when)
+        self.rpaths = self.dstdb.prune_rpaths(self.when, subdir=self.args.subdir)
         if not self.rpaths:
             log("Nothing to prune")
             return
@@ -55,7 +56,7 @@ class Prune:
             else:
                 with open(self.args.shell_script, "wt") as fp:
                     fp.write("\n".join(out))
-                log(f"Shell script written to {repr(self.args.shell_script)}")
+                log(f"Shell script written to {_r(self.args.shell_script)}")
             return
 
         self.errcount = 0
@@ -65,11 +66,11 @@ class Prune:
 
         def _delete(rpath):
             try:
-                log(f"Pruning {repr(rpath)}.")
+                log(f"Pruning {_r(rpath)}.")
                 rc.delete((self.config.dst, rpath))
                 return rpath
             except subprocess.CalledProcessError as EE:
-                log(f"ERROR: Could not prune {repr(rpath)}.")
+                log(f"ERROR: Could not prune {_r(rpath)}.")
                 log(f"Error: {EE}")
                 with LOCK:
                     self.errcount += 1
@@ -97,14 +98,19 @@ class Prune:
         for rpath, size in self.rpaths:
             num, units = bytes2human(size)
             paren = f"{num:0.2f} {units}" if size >= 0 else "DEL"
-            _p(f"    {repr(rpath)} ({paren})")
+            _p(f"    {_r(rpath)} ({paren})")
 
 
 class PruneableDFBDST(DFBDST):
-    def prune_rpaths(self, when):
-        # Pruning is more complex than it seems at first because of reference files. We do not want to
-        # delete files still being references. We also don't want to delete a delete-marker that "hides"
-        # those still-referenced files. The algorithm to do this is described in comments
+    def prune_rpaths(self, when, subdir=""):
+        # Pruning is more complex than it seems at first because of reference files.
+        # We do not want to delete files still being references. We also don't want
+        # to delete a delete-marker that "hides" those still-referenced files.
+        # The algorithm to do this is described in comments
+        #
+        # Because of this added complexity, subdir is just a convenience to filter those
+        # who do not start with it. The full prune is considered in step 1
+        subdir = f"{subdir.removesuffix('/').removeprefix('./')}/".removeprefix("/")
 
         # Step 0: Group by aname
         groups = self.group_by_apath(select="rpath,apath,timestamp,size")
@@ -122,9 +128,9 @@ class PruneableDFBDST(DFBDST):
             keep_rpaths.update(row["rpath"] for row in group[icut:])
             del_groups[name] = group[:icut]
 
-            debug(f'(1) {repr(name)} keep {[row["rpath"] for row in group[icut:]]}')
+            debug(f'(1) {_r(name)} keep {[row["rpath"] for row in group[icut:]]}')
             debug(
-                f'(1) {repr(name)} consider for del {[row["rpath"] for row in group[icut:]]}'
+                f'(1) {_r(name)} consider for del {[row["rpath"] for row in group[icut:]]}'
             )
 
         # Step 2: Loop over each group of to-be-deleted files
@@ -136,6 +142,10 @@ class PruneableDFBDST(DFBDST):
         #          a kept file, that is kept because of reference)
         del_rpaths = set()
         for name, group in del_groups.items():
+            if subdir and not name.startswith(subdir):
+                debug(f"subdir = {_r(subdir)} filter on {_r(name)}")
+                continue
+
             _d = set()  # This isn't needed but makes debug msg easier
             keep_group = []
             for row in group:  # 2a
@@ -145,8 +155,8 @@ class PruneableDFBDST(DFBDST):
                 _d.add((row["rpath"], row["size"]))
             del_rpaths.update(_d)
 
-            debug(f'(2a) {repr(name)} temp keep {[row["rpath"] for row in keep_group]}')
-            debug(f"(2a) {repr(name)} del {_d}")
+            debug(f'(2a) {_r(name)} temp keep {[row["rpath"] for row in keep_group]}')
+            debug(f"(2a) {_r(name)} del {_d}")
 
             if not keep_group:
                 continue
@@ -162,8 +172,8 @@ class PruneableDFBDST(DFBDST):
             still_keep.append(keep_group[-1])  # Add the last item back
             del_rpaths.update(_d)
 
-            debug(f'(2b) {repr(name)} temp keep {[row["rpath"] for row in still_keep]}')
-            debug(f"(2b) {repr(name)} del {_d}")
+            debug(f'(2b) {_r(name)} temp keep {[row["rpath"] for row in still_keep]}')
+            debug(f"(2b) {_r(name)} del {_d}")
 
             # 2c
             if len(still_keep) > 1:
@@ -172,7 +182,7 @@ class PruneableDFBDST(DFBDST):
             if row["size"] < 0:
                 del_rpaths.add((row["rpath"], row["size"]))
 
-                debug(f'(2c) {repr(name)} del {repr(row["rpath"])}')
+                debug(f'(2c) {_r(name)} del {_r(row["rpath"])}')
 
         # A note: This can be made even more agressive because this may leave behind an
         #         unneeded delete marker. For the sake of simplicity, I am not going to
