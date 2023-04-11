@@ -174,15 +174,16 @@ class Backup:
 
         flags = []
 
+        compute_hashes = any(
+            [config.get_hashes, config.compare == "hash", config.renames == "hash"]
+        )
+
         modtime = (
             config.get_modtime
             or config.compare == "mtime"
             or (config.cliconfig.refresh and config.dst_compare == "mtime")
             or config.renames == "mtime"
             or (compute_hashes and config.reuse_hashes == "mtime")
-        )
-        compute_hashes = any(
-            [config.get_hashes, config.compare == "hash", config.renames == "hash"]
         )
 
         if compute_hashes:
