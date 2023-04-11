@@ -8,6 +8,8 @@ if sys.version_info < (3, 9):
 
 import dfb
 
+_r = repr
+
 dfb_version = dfb.__version__
 
 from setuptools import setup
