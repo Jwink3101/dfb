@@ -146,7 +146,8 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  --at TIMESTAMP        Timestamp for the file to restore. Specify a date and
+  --at TIMESTAMP, --before TIMESTAMP
+                        Timestamp for the file to restore. Specify a date and
                         timestamp in an ISO-8601 like format (YYYY-MM-DD[T]HH:MM:SS)
                         with or without spaces, colons, dashes, "T", etc. Can
                         optionally specify a numeric time zone (e.g. -05:00) or 'Z'.
@@ -223,7 +224,8 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  --at TIMESTAMP        Timestamp for the file to restore. Specify a date and
+  --at TIMESTAMP, --before TIMESTAMP
+                        Timestamp for the file to restore. Specify a date and
                         timestamp in an ISO-8601 like format (YYYY-MM-DD[T]HH:MM:SS)
                         with or without spaces, colons, dashes, "T", etc. Can
                         optionally specify a numeric time zone (e.g. -05:00) or 'Z'.
@@ -367,7 +369,7 @@ Listing Settings:
 ```text
 usage: dfb snapshot [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
                     [--after TIMESTAMP] [--only TIMESTAMP] --config file
-                    [-o 'OPTION = VALUE'] [--refresh] [--output OUTPUT]
+                    [-o 'OPTION = VALUE'] [--refresh] [-d] [--output OUTPUT]
                     [path]
 
 positional arguments:
@@ -375,6 +377,7 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
+  -d, --deleted         List deleted files as well.
   --output OUTPUT       Specify an output file. Otherwise will print to stdout
 
 Global Settings:

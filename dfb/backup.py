@@ -548,7 +548,11 @@ class Backup:
         # require we accumulate. Instead, let it go right to insert which closes the DB
         # each time. This is trivial compared to upload times. Plus, we want an upload
         # to be recorded in the DB right away
-        files = map(self.dstdb.insert, files)  # This does nothing in capture mode
+        #
+        # This does nothing in capture mode
+        files = map(
+            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
+        )
 
         stats = StatsThread(self.config, N=N, daemon=True).start()
 
@@ -643,7 +647,10 @@ class Backup:
 
         files = tmap(_upload_ref, files, Nt=config.concurrency)
         files = filter(bool, files)
-        files = map(self.dstdb.insert, files)  # Add the new references
+        files = map(
+            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
+        )
+
         # Make them work
         for file in files:
             pass
@@ -712,7 +719,9 @@ class Backup:
 
         files = tmap(_delete, files, Nt=config.concurrency)
         files = filter(bool, files)
-        files = map(self.dstdb.insert, files)
+        files = map(
+            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
+        )
 
         # Make them work
         for file in files:
@@ -837,10 +846,25 @@ class Backup:
         for log_dest in log_dests:
             dtxt = rcpathjoin(*listify(log_dest))
             log(f"Uploading log to {_r(dtxt)}")
-            config.rc.copyfile(
-                src=log_copy,
-                dst=log_dest,
-            )
+            try:
+                config.rc.copyfile(
+                    src=log_copy,
+                    dst=log_dest,
+                )
+            except Exception as e:
+                log(f"Failed: {e}")
+
+        if self.config.upload_snapshots:
+            name = f"{self.config.now.dt}Z.jsonl"
+            snap_src = self.config.tmpdir / name
+            snap_dst = (config.dst, f".dfb/snapshots/{name}")
+            try:
+                config.rc.copyfile(
+                    src=snap_src,
+                    dst=snap_dst,
+                )
+            except Exception as e:
+                log(f"Failed: {e}")
 
 
 SHELL_SCRIPT_WARNING = dedent(

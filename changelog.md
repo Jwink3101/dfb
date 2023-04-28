@@ -1,5 +1,12 @@
 # Changelog
 
+## 20230429.0
+
+- Adds the option to upload snapshot files with each run. These are functionally the same as calling `snapshot --only <timestamp> --deleted`
+- Added `--deleted` to snapshot
+- Bug Fixes
+    - source and dest labels mixed up in restore logs
+
 ## 20230411.0 (BETA)
 
 - Bug Fix

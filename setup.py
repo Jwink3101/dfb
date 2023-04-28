@@ -5,10 +5,8 @@ import subprocess, os, re
 # This shouldn't be needed since I have python_requires set but just in case:
 if sys.version_info < (3, 9):
     raise ValueError("Must use python >= 3.9")
-
-import dfb
-
 _r = repr
+import dfb
 
 dfb_version = dfb.__version__
 

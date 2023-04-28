@@ -115,6 +115,8 @@ def parse(argv=None, shebanged=False):
     restore_parent = argparse.ArgumentParser(add_help=False)
     restore_parent.add_argument(
         "--at",
+        "--before",
+        dest="at",
         metavar="TIMESTAMP",
         help=f"""Timestamp for the file to restore. {ISODATEHELP}""",
     )
@@ -369,6 +371,12 @@ def parse(argv=None, shebanged=False):
         help="Recursivly list the files in line-delineated JSON at the optionally specified time",
     )
     snap.add_argument(
+        "-d",
+        "--deleted",
+        action="store_true",
+        help="List deleted files as well.",
+    )
+    snap.add_argument(
         "--output",
         help="""
         Specify an output file. Otherwise will print to stdout""",
@@ -599,7 +607,9 @@ def _cli(cliconfig):
                     prefix="fail",
                 )
             if cliconfig.command == "backup":
-                log("Will attempt to save logs if configured. May fail")
+                log(
+                    "Will attempt to save logs and/or snapshots if configured. May fail"
+                )
                 back.upload_logs()
         except:
             print("Saving logs and running fail_shell didn't work", file=sys.stderr)

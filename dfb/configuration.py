@@ -472,6 +472,14 @@ log_dest = None
 # log_dest = "/full/path/to/local"
 # log_dest = "/full/path/to/local", "remote:path/to/log"
 
+# dfb can optionally upload snapshots of the files modified at this timestamp. Note that 
+# these are *not* affected by prune and there is (currently) no way to rebuild the 
+# database from them (maybe in the future). But they could be useful for some 
+# scripted recovery metadata if needed since they are going to be based on local 
+# attributes. dfb will try to upload even if there is a failure. The results are
+# functionally the same as calling `snapshot --only <timestamp> --deleted`
+upload_snapshots = True
+
 # Also store and transfer metadata. Uses rclone's metadata capabilities
 # as outlined at https://rclone.org/docs/#metadata.
 # Not all remotes (either source or dest) can read/write this but, if it can

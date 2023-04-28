@@ -976,8 +976,54 @@ def test_keep_going_on_fail():
     assert test.read("dst/mod.19700101000003.txt") == "moded me ."
 
 
+@pytest.mark.parametrize("upload", [True, False])
+def test_snapshots(upload):
+    import json
+
+    test = testutils.Tester(name="snapshots")
+    test.config["upload_snapshots"] = upload
+
+    test.write_config()
+
+    test.write_pre("src/versions.txt", "versions 1")
+    test.write_pre("src/new1.txt", "do not touch")
+    test.write_pre("src/new1_del3.txt", "new at 1. Del at 3")
+
+    test.backup(offset=1)
+
+    test.write_post("src/versions.txt", "versions 3.")
+    os.unlink("src/new1_del3.txt")
+    test.write_pre("src/new3_mv5.txt", "new at 3. mv at 5")
+
+    test.backup(offset=3)
+
+    test.write_pre("src/versions.txt", "versions 5..")
+    test.move("src/new3_mv5.txt", "src/MOVED/new3_mv5 DONE.txt")
+
+    test.backup(offset=5)
+
+    if not upload:
+        assert not os.path.exists("dst/.dfb/snapshots/")
+        return
+
+    # Call for snapshots
+    test.call("snapshot", "--output", "1.jsonl", "--only", "u1", "--deleted")
+    test.call("snapshot", "--output", "3.jsonl", "--only", "u3", "--deleted")
+    test.call("snapshot", "--output", "5.jsonl", "--only", "u5", "--deleted")
+
+    keys = ["rpath", "apath", "timestamp", "size"]
+    for uz in [1, 3, 5]:
+        with open(f"{uz}.jsonl") as fp:
+            cli = [json.loads(line) for line in fp]
+            cli = {frozenset((k, f[k]) for k in keys) for f in cli}
+        with open(f"dst/.dfb/snapshots/1970010100000{uz}Z.jsonl") as fp:
+            upl = [json.loads(line) for line in fp]
+            upl = {frozenset((k, f[k]) for k in keys) for f in upl}
+        assert cli == upl
+
+
 if __name__ == "__main__":
-    test_main()
+    #     test_main()
     #     test_shell()
     #     test_log_upload(True)
     #     test_log_upload(False)
@@ -994,7 +1040,8 @@ if __name__ == "__main__":
     #         test_symlinks(mode, shell)
     #     test_symlinks_trick()
     #     test_keep_going_on_fail()
-
+    #    test_snapshots(True)
+    #    test_snapshots(False)
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

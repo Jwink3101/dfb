@@ -160,7 +160,7 @@ class Restore:
                     return
                 stxt = rcpathjoin(*listify(src))
                 dtxt = rcpathjoin(*listify(dst))
-                log(f"Transfering {_r(dtxt)} to {_r(stxt)}.")
+                log(f"Transfering {_r(stxt)} to {_r(dtxt)}.")
                 rc.copyfile(
                     src=src,
                     dst=dst,

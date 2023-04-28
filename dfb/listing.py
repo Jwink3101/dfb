@@ -21,7 +21,12 @@ def snapshot(config):
     args = config.cliconfig
     dstdb = DFBDST(config)
 
-    rows = dstdb.snapshot(path=args.path, before=args.before, after=args.after)
+    rows = dstdb.snapshot(
+        path=args.path,
+        before=args.before,
+        after=args.after,
+        remove_delete=not args.deleted,
+    )
     rows = (dstdb.fullrow2dict(row) for row in rows)
 
     if args.output:

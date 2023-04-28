@@ -298,7 +298,7 @@ class DFBDST:
     insert_many = partialmethod(insert_or_replace_many, insert=True, replace=False)
     replace_many = partialmethod(insert_or_replace_many, insert=False, replace=True)
 
-    def insert_or_replace(self, file, *, insert, replace):
+    def insert_or_replace(self, file, *, insert, replace, savelog=False):
         """
         Allows inserting or replacing. This requires being explicit to avoid wrong
         insertions
@@ -314,6 +314,11 @@ class DFBDST:
         with self.db() as db:
             db.execute(sql, DFBDST.dict2fullrow(file))
         db.commit()
+
+        if savelog:
+            with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
+                print(json.dumps(file), file=fp, flush=True)
+
         return file
 
     insert = partialmethod(insert_or_replace, insert=True, replace=False)
