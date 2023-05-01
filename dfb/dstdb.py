@@ -506,7 +506,6 @@ class DFBDST:
         db = self.db()
         diritems = db.execute("\n".join(query), qvals)
         apaths = (os.path.join(subdir, row["sub"]) for row in diritems)
-
         ###########################################################
 
         if before:
@@ -567,7 +566,7 @@ class DFBDST:
         conditions.append(["apath NOT LIKE ?", os.path.join(subdir, "%", "%")])
 
         # Use * then let SQL downselect before return
-        query = [f"SELECT * FROM items"]
+        query = [f"SELECT *,COUNT(*) AS versions FROM items"]
         qvals = []
 
         query.append("WHERE")

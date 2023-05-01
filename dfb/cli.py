@@ -359,9 +359,10 @@ def parse(argv=None, shebanged=False):
         "-l",
         "--long",
         action="count",
+        default=0,
         help="""
-            Long listing with size,mtime,name. 
-            Specify twice for size,mtime,timestamp,name.
+            Long listing with size, ModTime, path. 
+            Specify twice for versions, size, ModTime, Timestamp, path.
             """,
     )
 

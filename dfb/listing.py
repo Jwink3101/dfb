@@ -61,12 +61,14 @@ def ls(config):
     # Build a table
     table = []
     if not args.no_header:
-        table.append(["size", "ModTime", "Timestamp", "path"])
+        table.append(["versions", "size", "ModTime", "Timestamp", "path"])
     for item in items:
-        if isinstance(item, str):
+        if isinstance(item, str):  # subdir
             item = item if args.full_path else os.path.relpath(item, args.path)
-            table.append(["", "", "", f"{item.removesuffix('/')}/"])
+            table.append(["", "", "", "", f"{item.removesuffix('/')}/"])
             continue
+
+        versions = str(item["versions"])
 
         mtime = item.get("mtime", None)
         if not mtime:
@@ -95,12 +97,14 @@ def ls(config):
         if item["size"] < 0:
             path = f"{path} (DEL)"
             size = "D"
-        table.append([size, mtime, ts, path])
+        table.append([versions, size, mtime, ts, path])
 
-    if not args.long:
+    if args.long == 0:
         table = [row[-1:] for row in table]
     elif args.long == 1:
-        table = [row[:2] + row[-1:] for row in table]
+        table = [[row[1], row[2], row[4]] for row in table]
+    else:  # args.long == 2:
+        pass  # Just to be more clear
 
     if not table:
         log.print(f"No files under {_r(args.path)}. Check the path and the date")

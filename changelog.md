@@ -1,5 +1,9 @@
 # Changelog
 
+## 20230501.0
+
+- Adds version count to `ls -ll`
+
 ## 20230429.0
 
 - Adds the option to upload snapshot files with each run. These are functionally the same as calling `snapshot --only <timestamp> --deleted`
