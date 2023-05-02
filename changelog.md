@@ -1,5 +1,10 @@
 # Changelog
 
+## 20230502.0
+
+- Can specify `--deleted` (or `--del`) twice for `ls` and `snaphot` to *only* include deleted items
+
+
 ## 20230501.0
 
 - Adds version count to `ls -ll`

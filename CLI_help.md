@@ -299,10 +299,11 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -d, --deleted         List deleted files too with '<filename> (DEL)'
+  -d, --deleted, --del  List deleted files too with '<filename> (DEL)'. Specify twice
+                        to ONLY include deleted files
   --full-path           Show full path when listing subdirs
-  -l, --long            Long listing with size,mtime,name. Specify twice for
-                        size,mtime,timestamp,name.
+  -l, --long            Long listing with size, ModTime, path. Specify twice for
+                        versions, size, ModTime, Timestamp, path.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -377,7 +378,8 @@ positional arguments:
 
 optional arguments:
   -h, --help            show this help message and exit
-  -d, --deleted         List deleted files as well.
+  -d, --deleted, --del  List deleted files as well. Specify twice to ONLY include
+                        deleted files
   --output OUTPUT       Specify an output file. Otherwise will print to stdout
 
 Global Settings:

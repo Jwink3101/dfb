@@ -332,6 +332,7 @@ class DFBDST:
         after=None,
         select="*",
         remove_delete=True,
+        delete_only=False,
         conditions=None,
     ):
         """
@@ -353,7 +354,10 @@ class DFBDST:
 
         remove_delete: [True]
             If False, will keep deleted items. Uses a subquery which should be faster
-            than manual filtering
+            than manual filtering. If used with delete_only, will get nothing.
+
+        delete_only [False]
+            Only show deleted items. If used with remove_delete, will get nothing
 
         conditions:
             List of additional (sql,val) pairs. Warning: Do not let sql be user input.
@@ -364,7 +368,9 @@ class DFBDST:
         """
         # Build the snapshot. Note that the select is never *user*
         # specified so there isn't an SQL injection risk
-        query = [f"SELECT {select if not remove_delete else '*'} FROM items"]
+        query = [
+            f"SELECT {select if not (remove_delete or delete_only) else '*'} FROM items"
+        ]
 
         qvals = []
         conditions = conditions or []
@@ -400,8 +406,13 @@ class DFBDST:
         query.append("ORDER BY LOWER(apath)")
         query = "\n".join(query)
 
-        if remove_delete:  # select is * above so use it here
-            query = f"SELECT {select} FROM ({query}) WHERE size >= 0"
+        outq_cond = []
+        if remove_delete:
+            outq_cond.append("size >= 0")
+        if delete_only:
+            outq_cond.append("size < 0")
+        if outq_cond:
+            query = f"SELECT {select} FROM ({query}) WHERE " + " AND ".join(outq_cond)
 
         db = self.db()
         with db:
@@ -416,6 +427,7 @@ class DFBDST:
         after=None,
         select="*",
         remove_delete=True,
+        delete_only=False,
         conditions=None,
     ):
         """
@@ -438,7 +450,10 @@ class DFBDST:
 
         remove_delete: [True]
             If False, will keep deleted items. Uses a subquery which should be faster
-            than manual filtering
+            than manual filtering. If used with delete_only, will get nothing.
+
+        delete_only [False]
+            Only show deleted items. If used with remove_delete, will get nothing
 
         conditions:
             List of additional (sql,val) pairs. Warning: Do not let sql be user input.
@@ -551,13 +566,19 @@ class DFBDST:
             inq = "\n".join(inq)
 
             outq = [f"SELECT * FROM ({inq})"]
+
+            outq_cond = []
             if remove_delete:
-                outq.append("WHERE size >= 0")
+                outq_cond.append("size >= 0")
+            if delete_only:
+                outq_cond.append("size < 0")
+            if outq_cond:
+                outq.extend(["WHERE", " AND ".join(outq_cond)])
+
             outq.append("LIMIT 1")  # Just one
 
             qvals.extend(cond[1] for cond in conditions)
-            r = db.execute("\n".join(outq), qvals).fetchone()
-            if r:
+            if db.execute("\n".join(outq), qvals).fetchone():
                 directories.append(apath)
 
         ## Do files
@@ -583,8 +604,13 @@ class DFBDST:
             "**sub**", "\n".join(query)
         )
 
+        outq_cond = []
         if remove_delete:
-            qtxt = f"{qtxt} WHERE size >= 0"
+            outq_cond.append("size >= 0")
+        if delete_only:
+            outq_cond.append("size < 0")
+        if outq_cond:
+            qtxt += " WHERE " + " AND ".join(outq_cond)
 
         files = [DFBDST.fullrow2dict(row) for row in db.execute(qtxt, qvals)]
 
