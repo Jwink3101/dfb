@@ -1,9 +1,17 @@
 # Changelog
 
+## 20230508.0
+
+- Fixed removed feature.
+
 ## 20230507.0
 
 - Adds the `disable_prune` (default to False) configuration option so that it is harder to accidentally prune. Makes it effectively append-only unless very, very explicit.
 - Minor documentation updates
+
+## 20230502.0
+
+- Can specify `--deleted` (or `--del`) twice for `ls` and `snaphot` to *only* include deleted items
 
 ## 20230501.0
 

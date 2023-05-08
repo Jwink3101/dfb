@@ -6,6 +6,7 @@ from pathlib import Path
 import gzip as gz
 import subprocess
 import json
+import shutil
 from textwrap import dedent
 
 p = os.path.abspath("../")
@@ -186,8 +187,110 @@ def test_listing():
     test.call("versions", "made up file", "--ref-count", "--real-path")
 
 
+def test_del():
+    test = testutils.Tester(name="listing_del")
+
+    test.config["renames"] = "mtime"
+    test.write_config()
+
+    test.write_pre("src/untouched.txt", "Never Modified")
+    test.write_pre("src/del_at_3.txt", "delete at 3")
+    test.write_pre("src/sub_del_at_3/file.txt", "delete at 3 --sub")
+    test.write_pre("src/sub_del_at_5/file.txt", "delete at 5 --sub")
+    test.write_pre("src/mv1/f1.txt", "move each time")
+    test.write_pre("src/new1/new1.txt", "new 1")
+
+    test.backup(offset=1)
+
+    os.unlink("src/del_at_3.txt")
+    shutil.rmtree("src/sub_del_at_3")
+    test.move("src/mv1/f1.txt", "src/mv2/f2.txt")
+    os.rmdir("src/mv1")
+    test.write_pre("src/new3/new3.txt", "new 2")
+
+    test.backup(offset=3)
+
+    shutil.rmtree("src/sub_del_at_5")
+    test.move("src/mv2/f2.txt", "src/mv3/f3.txt")
+    os.rmdir("src/mv2")
+    test.write_pre("src/new5/new5.txt", "new 2")
+
+    test.backup(offset=5)
+
+    test.call("ls", "--no-header")
+    items = {i.strip() for i in test.logs[-1][0].split("\n") if i.strip()}
+    assert items == {"mv3/", "new1/", "new3/", "new5/", "untouched.txt"}
+
+    test.call("ls", "--no-header", "--del")
+    items = {i.strip() for i in test.logs[-1][0].split("\n") if i.strip()}
+    assert items == {
+        "del_at_3.txt (DEL)",
+        "mv1/",
+        "mv2/",
+        "mv3/",
+        "new1/",
+        "new3/",
+        "new5/",
+        "sub_del_at_3/",
+        "sub_del_at_5/",
+        "untouched.txt",
+    }
+
+    test.call("ls", "--no-header", "--del", "--del")
+    items = {i.strip() for i in test.logs[-1][0].split("\n") if i.strip()}
+    assert items == {
+        "del_at_3.txt (DEL)",
+        "mv1/",
+        "mv2/",
+        "sub_del_at_3/",
+        "sub_del_at_5/",
+    }
+
+    test.call("snapshot", "--output", "0.jsonl")
+    test.call("snapshot", "--del", "--output", "1.jsonl")
+    test.call("snapshot", "--del", "--del", "--output", "2.jsonl")
+
+    with open("0.jsonl") as fp:
+        i0 = {(item["apath"], item["size"]) for item in map(json.loads, fp)}
+    assert i0 == {
+        ("mv3/f3.txt", 14),
+        ("new1/new1.txt", 5),
+        ("new3/new3.txt", 5),
+        ("new5/new5.txt", 5),
+        ("untouched.txt", 14),
+    }
+
+    with open("1.jsonl") as fp:
+        i1 = {(item["apath"], item["size"]) for item in map(json.loads, fp)}
+    assert i1 == {
+        ("del_at_3.txt", -1),
+        ("mv1/f1.txt", -1),
+        ("mv2/f2.txt", -1),
+        ("mv3/f3.txt", 14),
+        ("new1/new1.txt", 5),
+        ("new3/new3.txt", 5),
+        ("new5/new5.txt", 5),
+        ("sub_del_at_3/file.txt", -1),
+        ("sub_del_at_5/file.txt", -1),
+        ("untouched.txt", 14),
+    }
+
+    with open("2.jsonl") as fp:
+        i2 = {(item["apath"], item["size"]) for item in map(json.loads, fp)}
+    assert i2 == {
+        ("del_at_3.txt", -1),
+        ("mv1/f1.txt", -1),
+        ("mv2/f2.txt", -1),
+        ("sub_del_at_3/file.txt", -1),
+        ("sub_del_at_5/file.txt", -1),
+    }
+
+    assert i0.union(i2) == i1
+
+
 if __name__ == "__main__":
-    test_listing()
+    # test_listing()
+    test_del()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

@@ -69,6 +69,21 @@ Or, directly execute the config file (it has a custom shebang):
     ./config.py ls
     # ...
 
+## Local Database
+
+A local sqlite3 database is kept that serves to greatly speed up interaction. The database is used for listing the remote either in the CLI or for use in backups. It is updated as real-time as is possible with uploads so even interrupted or failed backups should be correct (or, if not, it may re-backup but not lose anything).
+
+However, if the remote is modified manually, the database should be refreshed. Or if you wish to interact with the backup on another machine, it should either be refreshed or copied.
+
+Note that, depending on the configuration, not all data may be in the database. For example, if not using `mtime` for `dst_compare`, it won't be fetched. That may still be there for restore.
+
+The database is stored in:
+
+    <rclone cache dir>/DFB/<_uuid from config>.db
+
+Where "`rclone cache dir`" is found from: `$ rclone config paths`
+    
+
 ## Configuration
 
 ### Comparison and Rename Attributes
@@ -209,7 +224,7 @@ Other advantages of this approach are:
 
 Remotes like OneDrive and consumer storage that offer versioning usually only do it via the website and requires you manually restore for each file. Miserable experience though it'll do in a pinch.
 
-However, some remotes for rclone, like B2 and S3, offer native versions with built in flags in rclone that let you do things like dfb. Are they better? Maybe. They are different and to each their own. Personally, I like to *own* my backup process and not rely on the backend storage. I also like the freedom to move storage if I need, both capability and backup migration
+However, some remotes for rclone, like B2 and S3, offer native versions with built in flags in rclone that let you do things like dfb. Are they better? Maybe. They are different and to each their own. Personally, I like to *own* my backup process and not rely on the backend storage. I also like the freedom to move storage if I need, both capability and backup migration.
 
 But the real answer is to use both! When you prune (or get hacked/randomwared), you have another backup!
 
