@@ -11,17 +11,16 @@ Please provide feedback!
 ---
 ---
 
-Full-file, append-only, backups that can be easily restored to any point in time.
+Full-file, append-only, backups that can be easily restored to any point in time. Can back up to and from any [rclone](https://rclone.org/) remote.
 
-**The premise**: When a file is uploaded, the date is appended to the name. This allows you to see the state of the backup by only considering times <= a time of interest. Deletes are noted and moves are optionally tracked. 
+**The premise**: When a file is uploaded, the date is appended to the name. This allows you to see the state of the backup by only considering times <= a time of interest. Deleted files are represented with a delete marker. Optionally, moves can be tracked with references.
 
-Like its cousin, [rirb], dfb is not the most efficient, advanced, fast, featurefull,  sexy, or sophisticated. However, this approach is simple, easy to use, and easy to understand. No special tools are needed to restore and full copies of the files are stored as opposed to in chunks (which has pros and cons). For backups, I think these are great tradeoffs.
-
-DFB came out of an idea I posed on the rclone forum and enabled by reusing a good bit of my other tool, RIRB.
+Like its cousin, [rirb][rirb], dfb is not the most efficient, advanced, fast, featurefull,  sexy, or sophisticated. However, this approach is **simple, easy to use, and easy to understand**. No special tools are needed to restore and full copies of the files are stored as opposed to in chunks (which has pros and cons). For backups, I think these are great tradeoffs.
 
 ## Project Goals:
 
 * Be simple to understand, inspect, and even restore without the need for DFB itself. **The tool is only a convenience for restore; not a requirement**.
+    * By design, even without documentation, the format can be easily reverse engineered.
 * Allow for rollback to any point-in-time as a first-class option (i.e. no crazy scripting)
 * Support append-only/immutable storage natively
 
@@ -37,7 +36,7 @@ When files are backed up, they are renamed to have the date of the backup in the
 
     <filename>.YYYYMMDDhhssmm<optional R or D>.ext
 
-where the time is *always in UTC time*. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is a tiny file with `D` and if a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
+where the time is *always in UTC (Z) time*. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is a tiny file with `D` and if a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
 
 ## Install
 
@@ -61,7 +60,9 @@ Assuming this is a new setup, just run it:
 
     $ dfb backup --config path/to/config.py
     
-or set the environment `$DFB_CONFIG_FILE=path/to/config.py`. Or, directly execute the config file (it has a custom shebang)
+or set the environment `$DFB_CONFIG_FILE=path/to/config.py`. 
+
+Or, directly execute the config file (it has a custom shebang):
 
     ./config.py # <--- Assumed backup mode
     ./config.py backup
@@ -208,7 +209,7 @@ Other advantages of this approach are:
 
 Remotes like OneDrive and consumer storage that offer versioning usually only do it via the website and requires you manually restore for each file. Miserable experience though it'll do in a pinch.
 
-However, some remotes for rclone, like B2 and S3, offer native versions with built in flags in rclone that let you do things like dfb. Are they better? Maybe. They are different and to each their own. Personally, I like to *own* my backup process and not rely on the backend storage. I also like the freedom to move storage if I need.
+However, some remotes for rclone, like B2 and S3, offer native versions with built in flags in rclone that let you do things like dfb. Are they better? Maybe. They are different and to each their own. Personally, I like to *own* my backup process and not rely on the backend storage. I also like the freedom to move storage if I need, both capability and backup migration
 
 But the real answer is to use both! When you prune (or get hacked/randomwared), you have another backup!
 

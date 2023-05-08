@@ -25,8 +25,7 @@ def snapshot(config):
         path=args.path,
         before=args.before,
         after=args.after,
-        remove_delete=args.deleted == 0,
-        delete_only=args.deleted > 1,
+        remove_delete=not args.deleted,
     )
     rows = (dstdb.fullrow2dict(row) for row in rows)
 
@@ -52,8 +51,7 @@ def ls(config):
         subdir=args.path,
         before=args.before,
         after=args.after,
-        remove_delete=args.deleted == 0,
-        delete_only=args.deleted > 1,
+        remove_delete=not args.deleted,
     )
 
     ####

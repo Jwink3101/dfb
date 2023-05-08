@@ -486,6 +486,13 @@ upload_snapshots = True
 # be read on the source, it will be preserved in the filelist
 metadata = True
 
+# Pruning is the only distructive process in dfb. In order to make sure it isn't done by
+# accident, setting this to True will force all pruneing to be as if called with 
+# --dry-run. To undo this, you must override it:
+#   --override "disable_prune = False"
+# Defaults to False
+disable_prune = False
+
 ## Pre-, Post- and fail- shell commands to run
 # Specify shell code to be evaluated before and/or after running dfb. Note
 # these are all run from the current directory but $CONFIGDIR environment will be set.

@@ -349,13 +349,8 @@ def parse(argv=None, shebanged=False):
     ls.add_argument(
         "-d",
         "--deleted",
-        "--del",
-        dest="deleted",
-        action="count",
-        default=0,
-        help="""
-            List deleted files too with '<filename> (DEL)'. 
-            Specify twice to ONLY include deleted files""",
+        action="store_true",
+        help="List deleted files too with '<filename> (DEL)'",
     )
     ls.add_argument(
         "--full-path", action="store_true", help="Show full path when listing subdirs"
@@ -376,17 +371,11 @@ def parse(argv=None, shebanged=False):
         parents=[global_parent, list_parent, config_global],
         help="Recursivly list the files in line-delineated JSON at the optionally specified time",
     )
-
     snap.add_argument(
         "-d",
         "--deleted",
-        "--del",
-        dest="deleted",
-        action="count",
-        default=0,
-        help="""
-            List deleted files as well.  
-            Specify twice to ONLY include deleted files""",
+        action="store_true",
+        help="List deleted files as well.",
     )
     snap.add_argument(
         "--output",

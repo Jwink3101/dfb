@@ -22,6 +22,14 @@ class Prune:
     def __init__(self, config):
         self.config = config
         self.args = config.cliconfig
+
+        if config.disable_prune and not self.args.dry_run:
+            log(
+                "Setting --dry-run based on 'disable_prune = True'. "
+                "Run with `--override 'disable_prune = False'` to override"
+            )
+            self.args.dry_run = True
+
         self.when = when = timestamp_parser(
             self.args.when, epoch=True, now=self.config.now.obj
         )
