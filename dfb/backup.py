@@ -98,8 +98,12 @@ class Backup:
             out.append("\n## Transfers")
             out.append(self.transfer(shell_script=True))
 
-            out.append("\n## References (moves)")
-            out.append(self.reference(shell_script=True))
+            if config.rename_method == "reference":
+                out.append("\n## References (moves)")
+                out.append(self.reference(shell_script=True))
+            else:
+                out.append("\n## Copies (moves)")
+                out.append(self.move_by_copy(shell_script=True))
 
             out.append("\n## Deletes")
             out.append(self.delete(shell_script=True))
@@ -119,10 +123,16 @@ class Backup:
         except ValueError:
             err.append("transfer")
 
-        try:
-            self.reference()
-        except ValueError:
-            err.append("reference")
+        if config.rename_method == "reference":
+            try:
+                self.reference()
+            except ValueError:
+                err.append("reference")
+        else:
+            try:
+                self.move_by_copy()
+            except ValueError:
+                err.append("move_by_copy")
 
         try:
             self.delete()
@@ -130,7 +140,7 @@ class Backup:
             err.append("delete")
 
         if err:
-            raise ValueError(f"Error occured in {', '.join(err)}")
+            raise ValueError(f"Error(s) occured in {', '.join(err)}")
 
         stats = self.run_stats()
         log("-----")
@@ -439,7 +449,7 @@ class Backup:
             unnew.add(moved_sfile["apath"])
 
         self.new[:] = list(set(self.new) - unnew)
-        # DO NOT UNDELETE!!! We still want them to be blocked
+        # DO NOT UNDELETE!!! We still want them to be "deleted" with a delete marker
         # NO: self.deleted[:] = list(set(self.deleted) - undelete)
 
     def transfer(self, shell_script=False):
@@ -487,8 +497,11 @@ class Backup:
                     out.append(f"{echo} | {rcat}")
                 else:
                     out.append(shlex.join(cmd + [sfile, dfile]))
+
                 if not self.config.dst_atomic_transfer:
+                    cmd[cmd.index("copyto")] = "moveto"
                     out.append(shlex.join(cmd + [dfile, swap]))
+
             return "\n".join(out)
 
         rc = self.config.rc
@@ -631,8 +644,9 @@ class Backup:
             ref = {"ver": 2, "rel": os.path.relpath(rpath, os.path.dirname(ref_rpath))}
             reftxt = json.dumps(ref)
             try:
-                r = repr
-                log(f"Moving {r(original)} to {r(file['apath'])} with {r(ref_rpath)}.")
+                log(
+                    f"Moving {_r(original)} to {_r(file['apath'])} with {_r(ref_rpath)}."
+                )
                 rc.write(
                     (config.dst, ref_rpath),
                     reftxt,
@@ -663,6 +677,112 @@ class Backup:
         from . import _FAIL
 
         if "backup_reference" in _FAIL:
+            raise ValueError()
+
+    def move_by_copy(self, shell_script=False):
+        config = self.config
+
+        # The upload pipeline is done in a functional programing(esque) fashion
+        # to better enable concurrency.
+        self.errcount = 0
+        moves = iter(self.moves)
+
+        def _build_copiedfile(original_dfile, moved_sfile):
+            ts = self.config.now.ts
+
+            new = original_dfile.copy()
+            new.update(moved_sfile)
+
+            new["original"] = original_dfile["apath"]
+            new["rpath"] = apath2rpath(new["apath"], ts)
+            new["source_rpath"] = original_dfile["rpath"]
+            new["timestamp"] = ts
+            new["dstinfo"] = False  # Since this is coming from the source
+            return new
+
+        files = map(star(_build_copiedfile), moves)
+
+        if shell_script:
+            out = []
+            cmd = [config.rclone_exe] + config.rclone_flags
+            cmd.extend(["copyto", "--no-check-dest"])
+            for file in files:
+                sfile = rcpathjoin(self.config.dst, file["source_rpath"])
+                dfile = rcpathjoin(self.config.dst, file["rpath"])
+
+                if not self.config.dst_atomic_transfer:
+                    dfile, swap = swap_name(dfile), dfile
+                    out.append(shlex.join(cmd + [sfile, dfile]))
+                    cmd[cmd.index("copyto")] = "moveto"
+                    out.append(shlex.join(cmd + [dfile, swap]))
+                else:
+                    out.append(shlex.join(cmd + [sfile, dfile]))
+
+            return "\n".join(out)
+
+        rc = self.config.rc
+        rc.start_rc()
+
+        def _copy_rc(file, *, rc):
+            try:
+                msg = f'"Moving" {_r(file["original"])} to {_r(file["apath"])} via copy'
+
+                sfile = rcpathjoin(self.config.dst, file["source_rpath"])
+                dfile = rcpathjoin(self.config.dst, file["rpath"])
+
+                if not self.config.dst_atomic_transfer:
+                    swap = dfile
+                    sname = swap_name(file["rpath"])
+                    dfile = self.config.dst, sname
+                    msg += f" (and via {_r(sname)})"
+
+                log(msg)
+
+                rc.copyfile(
+                    src=sfile,
+                    dst=dfile,
+                    _config={
+                        "NoCheckDest": True,
+                        "metadata": self.config.metadata,
+                    },
+                )
+
+                if not self.config.dst_atomic_transfer:
+                    log(f"Swapping {_r(sname)} --> {_r(file['rpath'])}")
+                    rc.movefile(
+                        src=dfile,
+                        dst=swap,
+                        _config={
+                            "NoCheckDest": True,
+                            "metadata": self.config.metadata,
+                        },
+                    )
+                return file
+            except Exception as EE:
+                msg = [f"ERROR: Could not copy {_r(file['apath'])}."]
+                msg.append(f"Error: {EE}")
+                log("\n".join(msg))
+                with LOCK:
+                    self.errcount += 1
+
+        files = tmap(partial(_copy_rc, rc=rc), files, Nt=config.concurrency)
+        files = filter(bool, files)
+        files = map(
+            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
+        )
+
+        # Make them work
+        for file in files:
+            pass
+        if self.errcount:
+            msg = "ERROR: At least one move (via copy) did not work."
+            log(msg)
+            raise ValueError(msg)
+
+        # For testing only
+        from . import _FAIL
+
+        if "backup_copy" in _FAIL:
             raise ValueError()
 
     def delete(self, shell_script=False):
@@ -869,7 +989,7 @@ class Backup:
 
 SHELL_SCRIPT_WARNING = dedent(
     """\
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!
     ╔═══════════════════════════════════════════════════════╗
     ║                                                       ║
     ║  #     #    #    ######  #     # ### #     #  #####   ║
@@ -884,7 +1004,7 @@ SHELL_SCRIPT_WARNING = dedent(
     The local database will **NOT** be updated if the shell 
     script is run manually. You MUST run with --refresh
     next time you use dfb!
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!
     """
 )
 

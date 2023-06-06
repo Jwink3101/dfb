@@ -250,13 +250,14 @@ class Config:
             "renames": {"size", "mtime", "hash", False, None},
             "reuse_hashes": {"size", "mtime", False, None},
             "links": {"skip", "link", "copy"},
+            "rename_method": {"reference", "copy", False, None},
         }
 
         for key, values in allowed.items():
             val = self._config[key]
             if val not in values:
                 raise ConfigError(
-                    f"Allowed values for '{key}' are {values}. Specified '{val}'"
+                    f"Allowed values for '{key}' are {values}. Specified {repr(val)}"
                 )
 
         badflags = FILTER_FLAGS.intersection(self.rclone_flags)
@@ -421,6 +422,14 @@ renames = "mtime"
 
 # Similarly, renames on a destination-based file information can be different
 dst_renames = None # None means use 'renames'
+
+# Specify whether to use a reference for renames or copy. Ignored if renames are
+# False.
+#   'reference' : Use a small file that gives the relative position of the original
+#   'copy'      : Use a copy command. This is LESS efficient if your remote doesn't
+#                 support server-side-copy but it'll still work. Note that
+#                 'dst_atomic_transfer' is followed here too.
+rename_method = 'reference' # 'reference' or 'copy'
 
 # When doing mtime comparisons, what is the error to allow. Ideally, this
 # should be small since it is always on the same machine but some filesystems

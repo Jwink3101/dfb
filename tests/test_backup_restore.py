@@ -25,14 +25,16 @@ import pytest
 _r = repr
 
 
-def test_main():
+@pytest.mark.parametrize("rename_method", ["reference", "copy"])
+def test_main(rename_method):
     import json
 
     test = testutils.Tester(name="main")
 
     test.config["renames"] = "mtime"
     test.config["filter_flags"] = ["--filter", "- *.exc"]
-    test.config["dst_atomic_transfer"] = False
+    test.config["dst_atomic_transfer"] = True
+    test.config["rename_method"] = rename_method
 
     # # Main Test -- Tracking
 
@@ -106,16 +108,36 @@ def test_main():
     assert any(("apath", "new_at_3.txt") in f for f in test.remote_snapshot(before=4))
 
     # Test the move
-    r = json.loads(test.dst_rclone.read("sub2/moved.19700101000003R.txt"))
-    assert r == {"ver": 2, "rel": "../sub/move.19700101000001.txt"}
+    refitem = test.dstdb.snapshot(
+        conditions=[("apath = ?", "sub2/moved.txt")]
+    ).fetchone()
+    refitem = test.dstdb.fullrow2dict(refitem)
+
+    if rename_method == "reference":
+        r = json.loads(test.dst_rclone.read("sub2/moved.19700101000003R.txt"))
+        assert r == {"ver": 2, "rel": "../sub/move.19700101000001.txt"}
+
+        # DB
+        assert refitem.get("isref", False)
+        assert refitem["rpath"] == "sub/move.19700101000001.txt"
+    else:
+        assert test.read("dst/sub2/moved.19700101000003.txt") == "move me"
+
+        # DB
+        assert not refitem.get("isref", False)
+        assert refitem.get("source_rpath", None) == "sub/move.19700101000001.txt"
+        assert refitem.get("original", None) == "sub/move.txt"
 
     test.write_pre("src/versions.txt", "versions 5...")
     test.move("src/sub2/moved.txt", "src/moved_again.txt")
     test.backup("--refresh", offset=5)  # add refresh to test that too
 
     # Should still point to the original!
-    r = json.loads(test.dst_rclone.read("moved_again.19700101000005R.txt"))
-    assert r == {"ver": 2, "rel": "sub/move.19700101000001.txt"}
+    if rename_method == "reference":
+        r = json.loads(test.dst_rclone.read("moved_again.19700101000005R.txt"))
+        assert r == {"ver": 2, "rel": "sub/move.19700101000001.txt"}
+    else:
+        test.read("dst/moved_again.19700101000005.txt") == "move me"
 
     diff = test.src_missing_in_dst(keys="apath")
     assert diff == {
@@ -150,13 +172,13 @@ def test_main():
     ## Test reference format v2
     test.call("ls", "-vv", "--refresh")
     log = test.logs[-1][0]
-    assert "Reference 'moved_again.19700101000005R.txt' is v2" in log
-
-    with open("dst/moved_again.19700101000005R.txt", "wt") as fp:
-        fp.write("sub/move.19700101000001.txt")
-    test.call("ls", "-vv", "--refresh")
-    log = test.logs[-1][0]
-    assert "Reference 'moved_again.19700101000005R.txt' is v1 (implied)" in log
+    if rename_method == "reference":
+        assert "Reference 'moved_again.19700101000005R.txt' is v2" in log
+        with open("dst/moved_again.19700101000005R.txt", "wt") as fp:
+            fp.write("sub/move.19700101000001.txt")
+        test.call("ls", "-vv", "--refresh")
+        log = test.logs[-1][0]
+        assert "Reference 'moved_again.19700101000005R.txt' is v1 (implied)" in log
 
     # ## Do the snapshots match the reality?
 
@@ -469,12 +491,14 @@ def test_dst_compare_and_dst_renames(reuse_hashes):
     assert back.new == ["mv7.txt"]
 
 
-def test_shell_scripts():
+@pytest.mark.parametrize("rename_method", ["reference", "copy"])
+def test_shell_scripts(rename_method):
     test = testutils.Tester(name="shell_scripts")
 
     test.config["renames"] = "hash"
     test.config["reuse_hashes"] = False
     test.config["hash_type"] = "sha1"
+    test.config["rename_method"] = rename_method
     test.write_config()
 
     # +
@@ -495,9 +519,29 @@ def test_shell_scripts():
     test.backup("--shell-script", "run3.sh", offset=3)
 
     subprocess.call(["bash", "run3.sh"])
+    run3 = test.read("run3.sh")
 
-    # This won't make a difference in actual testing since there is no verif
+    if rename_method == "reference":
+        # Script
+        assert "## References (moves)" in run3
+        assert run3.count("rcat") == 3  # 2 del + 1 move
+        assert run3.count("printf") == 1
 
+        # Process
+        ref = test.read("dst/has been move.19700101000003R.txt")
+        assert json.loads(ref) == {"ver": 2, "rel": "will move.19700101000001.txt"}
+
+    else:
+        # script
+        assert "## Copies (moves)" in run3
+        assert run3.count("rcat") == 2  # 2 del ONLY
+        assert run3.count("printf") == 0
+        assert run3.count("dst/will move.19700101000001.txt") == 1  # only one
+
+        # process
+        assert test.read("dst/has been move.19700101000003.txt") == "move me"
+
+    # This won't make a difference in actual testing since there is no verification
     test.call("ls", "-ll")
     test.call("ls", "--no-header")
     items = {l.strip() for l in test.logs[-1][0].split("\n") if l.strip()}
@@ -1023,13 +1067,15 @@ def test_snapshots(upload):
 
 
 if __name__ == "__main__":
-    #     test_main()
+    #     test_main("reference")
+    #     test_main("copy")
     #     test_shell()
     #     test_log_upload(True)
     #     test_log_upload(False)
     #     test_dst_compare_and_dst_renames("mtime")
     #     test_dst_compare_and_dst_renames(False)
-    #     test_shell_scripts()
+    #     test_shell_scripts('reference')
+    #     test_shell_scripts('copy')
     #     test_restore_error()
     #     for mode in ["size", "mtime", "hash", "hash_mtime"]:
     #         test_false_negs_compare(mode)

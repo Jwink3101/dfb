@@ -1,5 +1,10 @@
 # Changelog
 
+## 20230606.0
+
+- Added the option to track moves and use a [server-side] copy instead of a reference. This only makes sense when the remote support server-side copy (not verified by dfb). It enables a cleaner representation without using bandwidth
+- Tests for new capability
+
 ## 20230508.0
 
 - Fixed removed feature.
