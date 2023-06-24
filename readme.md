@@ -2,16 +2,16 @@
 
 ---
 
-# WARNING: Early Public Beta
+# WARNING: Public Beta
 
-This is an **early public beta**. But, as discussed below, you don't need dfb to restore so the risk of usage is not too bad.
+This is a ** public beta**. But, as discussed below, you don't need dfb to restore so the risk of usage is not too bad.
 
 Please provide feedback!
 
 ---
 ---
 
-Full-file, append-only, backups that can be easily restored to any point in time. Can back up to and from any [rclone](https://rclone.org/) remote.
+Full-file, append-only, backups that can be easily restored to any point in time. Can back up from and send to *any** [rclone](https://rclone.org/) remote.
 
 **The premise**: When a file is uploaded, the date is appended to the name. This allows you to see the state of the backup by only considering times <= a time of interest. Deleted files are represented with a delete marker. Optionally, moves can be tracked with references.
 
@@ -19,7 +19,7 @@ Like its cousin, [rirb][rirb], dfb is not the most efficient, advanced, fast, fe
 
 ## Project Goals:
 
-* Be simple to understand, inspect, and even restore without the need for DFB itself. **The tool is only a convenience for restore; not a requirement**.
+* Be simple to understand, inspect, and even restore without the need for dfb itself. **The tool is only a convenience for restore; not a requirement**.
     * By design, even without documentation, the format can be easily reverse engineered.
 * Allow for rollback to any point-in-time as a first-class option (i.e. no crazy scripting)
 * Support append-only/immutable storage natively

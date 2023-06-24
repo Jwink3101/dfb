@@ -445,13 +445,20 @@ get_modtime = True  # True means you DO save ModTime at the source
 # Hashes can be expensive to compute on "SlowHash" remotes such as local or sftp.
 # As such, rather than recompute them all, the hashes of the previous state
 # can be used if they match based on this setting. If this is set, unmatched files
-# are hased in a second call.
+# are hased in a second call. Setting this to anything but False when using 
+# compare = 'hash' is the same as using that property for change detection then
+# verifying the backup via hash.
 #
 #   "size"  : Reuse hashes if filename and size match the previous
 #   "mtime" : Reuse hashes if the filename, size, and mtime (within dt) match
 #   False   : Do NOT reuse hashes. Note: Setting this to False on a "SlowHash"
 #             remote *and* requiring hashes through other settings will be very slow.
 reuse_hashes = False # "mtime"
+
+# Some remotes may not *always* compute hashes for every object. Rather than fail for the
+# hash mismatch, this will revert to a 'size' comparison (done before hashes are
+# even considered). This is the save behavior as rclone with --checksum
+error_on_missing_hash = False
 
 # Some remotes (notably local) allow for multiple hash types. If this is specified
 # AND hashes need to be computed, you can set the types. Specify as a single item

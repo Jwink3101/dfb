@@ -95,9 +95,16 @@ class SourceChecksumDB:
         db.commit()
         db.close()
 
-    def add_checksum(self, file):
+    def add_checksum_to_file(self, file):
+        """Add checksum to the file dict"""
         db = self.db()
-        q = (file["apath"], file["size"], file["mtime"], self.config.dt)
+
+        q = [file["apath"], file["size"], file.get("mtime", 0)]
+        if self.config.reuse_hashes == "mtime":
+            q.append(self.config.dt)
+        else:
+            q.append(float("inf"))  # Any time tolerance
+
         with db:
             row = db.execute(
                 """
@@ -109,13 +116,12 @@ class SourceChecksumDB:
             )
         row = row.fetchone()
 
-        if row:
-            file["checksum"] = json.loads(row["checksum"])
+        if row and (cs := json.loads(row["checksum"])):
+            file["checksum"] = cs
         return file
 
     def update_db(self, files):
         """Update the DB with the files. This should NOT be multi-threaded"""
-
         files = [file for file in files if file.get("checksum", None)]
         if not files:
             debug("no files to update")

@@ -1,5 +1,12 @@
 # Changelog
 
+## 20230623.0
+
+- Handles the situation when using `compare = 'hash'` but the checksum/hash is still missing, as can happen with some remotes. Falls back to `'size'` compare similar to rclone's behavior.
+    - Settable with `error_on_missing_hash` config
+- More robust hash database even around missing hashes (unlikely to actually happen for the kind of remotes you would want to use a database but this should handle it.)
+- Fixed bug with `reuse_hashes='size'` still caring about `mtime`
+
 ## 20230606.0
 
 - Added the option to track moves and use a [server-side] copy instead of a reference. This only makes sense when the remote support server-side copy (not verified by dfb). It enables a cleaner representation without using bandwidth

@@ -15,6 +15,7 @@ if p not in sys.path:
     sys.path.insert(0, p)
 
 from dfb.cli import cli
+from dfb.backup import NoCommonHashError
 
 # Local
 import testutils
@@ -1022,8 +1023,6 @@ def test_keep_going_on_fail():
 
 @pytest.mark.parametrize("upload", [True, False])
 def test_snapshots(upload):
-    import json
-
     test = testutils.Tester(name="snapshots")
     test.config["upload_snapshots"] = upload
 
@@ -1066,6 +1065,69 @@ def test_snapshots(upload):
         assert cli == upl
 
 
+@pytest.mark.parametrize("reuse_hashes", [False, "mtime", "size"])
+def test_reuse_hashes_method(reuse_hashes):
+    test = testutils.Tester(name="reuse_hashes")
+    test.config["reuse_hashes"] = reuse_hashes
+    test.config["compare"] = "hash"
+    test.write_config()
+
+    test.write_pre("src/same_size.txt", "versions 1")
+    test.backup(offset=1)
+
+    test.write_post("src/same_size.txt", "versions 2")  # Same size!
+    test.backup(offset=3)
+
+    if not reuse_hashes:
+        assert os.path.exists("dst/same_size.19700101000003.txt")
+        assert not os.path.exists("cache/DFB/test_reuse_hashes.checksum.db")
+    elif reuse_hashes == "mtime":
+        assert os.path.exists("dst/same_size.19700101000003.txt")
+        assert os.path.exists("cache/DFB/test_reuse_hashes.checksum.db")
+    elif reuse_hashes == "size":
+        assert not os.path.exists("dst/same_size.19700101000003.txt")
+        assert os.path.exists("cache/DFB/test_reuse_hashes.checksum.db")
+
+
+def test_missing_hashes():
+    test = testutils.Tester(name="missing_hashes")
+    test.config["reuse_hashes"] = False
+    test.config["compare"] = "hash"
+    test.write_config()
+
+    test.write_pre("src/same_size.txt", "versions 1")
+    test.backup(offset=1)
+
+    try:
+        from dfb import _FAIL
+
+        _FAIL.add("missing_hashes")
+
+        test.write_post("src/same_size.txt", "versions 2")  # Same size!
+        test.backup(offset=3)
+        log = test.logs[-1][0]
+        assert "WARNING: Missing hashes on source and/or dest" in log
+        assert "Reverting to 'size' only" in log
+
+        # Make sure it didn't back it up
+        assert not os.path.exists("dst/same_size.19700101000003.txt")
+
+        # This one should work even with missing hashes
+        test.backup("-o", "compare='mtime'", offset=5)
+        assert os.path.exists("dst/same_size.19700101000005.txt")
+
+        # Do it again but this should fail
+        # '-v' to get an error
+        try:
+            test.backup("-v", "-o", "error_on_missing_hash = True", offset=7)
+            assert False
+        except NoCommonHashError:
+            pass
+
+    finally:
+        _FAIL.remove("missing_hashes")
+
+
 if __name__ == "__main__":
     #     test_main("reference")
     #     test_main("copy")
@@ -1088,6 +1150,9 @@ if __name__ == "__main__":
     #     test_keep_going_on_fail()
     #    test_snapshots(True)
     #    test_snapshots(False)
+    #     for reuse_hashes in [False, "mtime", "size"]:
+    #         test_reuse_hashes_method(reuse_hashes)
+    test_missing_hashes()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

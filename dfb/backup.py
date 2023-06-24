@@ -32,6 +32,10 @@ from .utils import (
     listify,
 )
 
+# For testing only
+from . import _FAIL
+
+
 _r = repr
 
 
@@ -271,15 +275,23 @@ class Backup:
                 log(f"Source Listing Status: {c} items")
                 t0 = time.time()
 
+        # Testing
+        if "missing_hashes" in _FAIL:
+            for file in files:
+                file.pop("checksum", None)
+        # end testing
+
         debug(f"Listed {len(files)} files")
         if not compute_hashes or (compute_hashes and not config.reuse_hashes):
             debug("No need to compute checksums or already computed. Done")
             return files  # No hashes or already added
 
+        ## At this point, we need to add checksums and save it
+
         checksumdb = SourceChecksumDB(config)
 
         for file in files:
-            checksumdb.add_checksum(file)
+            checksumdb.add_checksum_to_file(file)
 
         # Determine which ones need a checksum and make them into a dict
         # refereced by apath for quick lookup
@@ -306,7 +318,10 @@ class Backup:
 
             # Update the item. This will update in files too
             for upfile in updated:
-                wo_checksum[upfile["Path"]]["checksum"] = upfile["Hashes"]
+                hashes = upfile.get("Hashes", None)
+                if not hashes:
+                    debug(f"Missing hashes from {upfile}")
+                wo_checksum[upfile["Path"]]["checksum"] = hashes
 
         # Update the DB
         checksumdb.update_db(wo_checksum.values())
@@ -372,13 +387,31 @@ class Backup:
                 scheck = sfile.get("checksum", {})
                 dcheck = dfile.get("checksum", {})
 
-                if not scheck:  # Nones to empty
-                    scheck = {}
-                if not dcheck:
-                    dcheck = {}
+                scheck = scheck or {}  # Nones to empty dict
+                dcheck = dcheck or {}
+
+                # This is a different case than no shared hashes. This happens when a remote
+                # doesn't return the hashes. Like rclone itself [1,2]. Ideally, we would
+                # have a settable fallback such as ModTime but this happens after listing
+                # and we don't want to have to list all ModTimes on the off chance of a
+                # fallback
+                #     [1] https://rclone.org/flags/
+                #         "-c, --checksum  Skip based on checksum (if available) & size,
+                #         not mod-time & size"
+                #     [2] https://forum.rclone.org/t/behavior-of-rclone-when-checksum-
+                #         but-checksum-is-missing-is-undocumented-and-unexpected/39231/3
+                #
+                if (not scheck or not dcheck) and not config.error_on_missing_hash:
+                    msg = [
+                        "WARNING: Missing hashes on source and/or dest",
+                        f"             src: {_r(sfile['apath'])}",
+                        f"             dst: {_r(dfile['rpath'])}",
+                        "         Reverting to 'size' only",
+                    ]
+                    log("\n".join(msg))
 
                 shared_hashes = set(scheck).intersection(set(dcheck))
-                if not shared_hashes:
+                if not shared_hashes and config.error_on_missing_hash:
                     m = "Non compatible (or non existent) hashes. Change attributes"
                     log(m)
                     msg.append(m)
@@ -581,8 +614,6 @@ class Backup:
             raise ValueError(msg)
 
         # For testing only
-        from . import _FAIL
-
         if "backup_transfer" in _FAIL:
             raise ValueError()
 
@@ -674,8 +705,6 @@ class Backup:
             raise ValueError(msg)
 
         # For testing only
-        from . import _FAIL
-
         if "backup_reference" in _FAIL:
             raise ValueError()
 
@@ -780,8 +809,6 @@ class Backup:
             raise ValueError(msg)
 
         # For testing only
-        from . import _FAIL
-
         if "backup_copy" in _FAIL:
             raise ValueError()
 
@@ -853,8 +880,6 @@ class Backup:
             raise ValueError(msg)
 
         # For testing only
-        from . import _FAIL
-
         if "backup_delete" in _FAIL:
             raise ValueError()
 

@@ -51,6 +51,8 @@ def time2all(dt_or_ts):
 
 
 class MyRow(sqlite3.Row):
+    """Fancier but performant sqlite3 row"""
+
     def todict(self):
         return {k: self[k] for k in self.keys()}
 
@@ -75,6 +77,16 @@ class MyRow(sqlite3.Row):
 
 
 class star:
+    """
+    Wrapper to make an iterable of arguments be applied as positional.
+
+        star(fun)(args) --> fun(*args)
+
+    Also passes additional args
+
+        star(fun)(args,other1,other2,kw=value) --> fun(*args,other1,other2,kw=value)
+    """
+
     def __init__(self, fun):
         self.fun = fun
 
@@ -88,6 +100,7 @@ def swap_name(filename):
 
 
 def tabulate(table, indent=2, sep="  "):
+    """Fancy printing of data"""
     tabulated = []
     nc = [len(c) for c in table[0]]
     for row in table[1:]:
@@ -237,6 +250,9 @@ def randstr(N=15):
 
 
 def listify(flags):
+    """Turn argument into a list. None or False-like become empty list"""
+    if isinstance(flags, list):
+        return flags
     flags = flags or []
     if isinstance(flags, str):
         flags = [flags]
@@ -247,6 +263,9 @@ flagify = listify
 
 
 def dictify(mydict):
+    """Turn argument into a dict. None or False-like become empty dict"""
+    if isinstance(mydict, dict):
+        return mydict
     if not mydict:
         return {}
     if isinstance(mydict, (list, tuple)):
