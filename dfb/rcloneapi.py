@@ -678,6 +678,12 @@ class Rclone:
         return res
 
     @cached_property
+    def version_dict(self):
+        cmd = ["rc", "--loopback", "core/version"]
+        res, _ = self.call(cmd)
+        return json.loads(res)
+
+    @cached_property
     def backend_features(self):
         cmd = ["backend", "features", self.remote]
         res, _ = self.call(cmd)

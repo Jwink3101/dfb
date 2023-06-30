@@ -516,7 +516,7 @@ positional arguments:
                         'u1678560662'. Or can specify a time difference from the
                         current time with any (and only) of the following: second[s],
                         minute[s], hour[s], day[s], week[s]. Example: "10 days 1 hour
-                        4 minutes 32 seconds". (The order doesn't matter). .
+                        4 minutes 32 seconds". (The order doesn't matter).
 
 optional arguments:
   -h, --help            show this help message and exit

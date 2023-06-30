@@ -8,7 +8,7 @@ import operator
 
 from . import LOCK, log, debug
 from .dstdb import DFBDST
-from .utils import swap_name, tabulate, bytes2human
+from .utils import tabulate, bytes2human
 from .timestamps import timestamp_parser
 from .rclone import rcpathjoin
 
@@ -31,7 +31,7 @@ def snapshot(config):
     rows = (dstdb.fullrow2dict(row) for row in rows)
 
     if args.output:
-        swap = swap_name(args.output)
+        swap = args.output + ".swp"
         with open(swap, "wt") as fp:
             for row in rows:
                 json.dump(row, fp)

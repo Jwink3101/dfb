@@ -17,14 +17,13 @@ from threading import Thread
 from functools import partial
 
 
-from . import debug, log, LOCK
+from . import debug, log, LOCK, MIN_RCLONE
 from .dstdb import DFBDST, apath2rpath
 from .rclone import IGNORED_FILE_DATA, rcpathjoin
 from .checksumdb import SourceChecksumDB
 from .threadmapper import ReturnThread, thread_map_unordered as tmap
 from .utils import (
     star,
-    swap_name,
     bytes2human,
     shell_runner,
     time_format,
@@ -59,8 +58,16 @@ class Backup:
         self.call_shell(mode="pre")
 
         self.src_rclone = config._config["src_rclone"]
+
         log("rclone version:")
         log(self.src_rclone.version.decode(), prefix="rclone")
+
+        ver = tuple(int(c) for c in self.src_rclone.version_dict["decomposed"])
+        if ver < MIN_RCLONE:
+            raise ValueError(
+                "Unsupported rclone version. "
+                f"Must use {'.'.join(f'{i}' for i in MIN_RCLONE)} or newer"
+            )
 
         self.dstdb = DFBDST(config)
 
@@ -519,9 +526,6 @@ class Backup:
 
                 link = file.get("linkdata", None)
 
-                if not self.config.dst_atomic_transfer:
-                    dfile, swap = swap_name(dfile), dfile
-
                 if link:
                     echo = shlex.join(["printf", link["link_dest"]])
                     cmdt = cmd.copy()
@@ -530,10 +534,6 @@ class Backup:
                     out.append(f"{echo} | {rcat}")
                 else:
                     out.append(shlex.join(cmd + [sfile, dfile]))
-
-                if not self.config.dst_atomic_transfer:
-                    cmd[cmd.index("copyto")] = "moveto"
-                    out.append(shlex.join(cmd + [dfile, swap]))
 
             return "\n".join(out)
 
@@ -549,12 +549,6 @@ class Backup:
 
                 msg = f"Uploading {_r(file['apath'])} to {_r(file['rpath'])}"
 
-                if not self.config.dst_atomic_transfer:
-                    swap = dfile
-                    sname = swap_name(file["rpath"])
-                    dfile = self.config.dst, sname
-                    msg += f" via {_r(sname)}"
-
                 log(msg)
 
                 if link:
@@ -565,16 +559,6 @@ class Backup:
                     rc.copyfile(
                         src=sfile,
                         dst=dfile,
-                        _config={
-                            "NoCheckDest": True,
-                            "metadata": self.config.metadata,
-                        },
-                    )
-                if not self.config.dst_atomic_transfer:
-                    log(f"Swapping {_r(sname)} --> {_r(file['rpath'])}")
-                    rc.movefile(
-                        src=dfile,
-                        dst=swap,
                         _config={
                             "NoCheckDest": True,
                             "metadata": self.config.metadata,
@@ -739,13 +723,7 @@ class Backup:
                 sfile = rcpathjoin(self.config.dst, file["source_rpath"])
                 dfile = rcpathjoin(self.config.dst, file["rpath"])
 
-                if not self.config.dst_atomic_transfer:
-                    dfile, swap = swap_name(dfile), dfile
-                    out.append(shlex.join(cmd + [sfile, dfile]))
-                    cmd[cmd.index("copyto")] = "moveto"
-                    out.append(shlex.join(cmd + [dfile, swap]))
-                else:
-                    out.append(shlex.join(cmd + [sfile, dfile]))
+                out.append(shlex.join(cmd + [sfile, dfile]))
 
             return "\n".join(out)
 
@@ -759,12 +737,6 @@ class Backup:
                 sfile = rcpathjoin(self.config.dst, file["source_rpath"])
                 dfile = rcpathjoin(self.config.dst, file["rpath"])
 
-                if not self.config.dst_atomic_transfer:
-                    swap = dfile
-                    sname = swap_name(file["rpath"])
-                    dfile = self.config.dst, sname
-                    msg += f" (and via {_r(sname)})"
-
                 log(msg)
 
                 rc.copyfile(
@@ -775,17 +747,6 @@ class Backup:
                         "metadata": self.config.metadata,
                     },
                 )
-
-                if not self.config.dst_atomic_transfer:
-                    log(f"Swapping {_r(sname)} --> {_r(file['rpath'])}")
-                    rc.movefile(
-                        src=dfile,
-                        dst=swap,
-                        _config={
-                            "NoCheckDest": True,
-                            "metadata": self.config.metadata,
-                        },
-                    )
                 return file
             except Exception as EE:
                 msg = [f"ERROR: Could not copy {_r(file['apath'])}."]

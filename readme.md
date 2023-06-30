@@ -128,14 +128,6 @@ renames = 'hash'
 dst_renames = False
 ```
 
-### Atomic Transfers
-
-Most remote destinations, except local, sftp, and ftp, have atomic transfers. That means a file only shows up if it is complete. For the others, you can set
-
-    dst_atomic_transfer = False
-    
-This will upload then move. Of course, this also breaks the ability to use object lock or other append-only storage systems but those are already atomic.
-
 ### Override
 
 The config file can be overridden at the command line by specifying code to evaluate before *and* after the configuration file. In order to control if it is evaluated before *or* after the configuration file, the variables `pre` and `post` are defined. Consider the following example:

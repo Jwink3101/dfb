@@ -24,7 +24,6 @@ def test_listing():
     test = testutils.Tester(name="listing")
 
     test.config["renames"] = "mtime"
-    test.config["dst_atomic_transfer"] = False  # Just to test that code path too
     test.write_config()
 
     test.write_pre("src/untouched.txt", "Never Modified")

@@ -34,7 +34,6 @@ def test_main(rename_method):
 
     test.config["renames"] = "mtime"
     test.config["filter_flags"] = ["--filter", "- *.exc"]
-    test.config["dst_atomic_transfer"] = True
     test.config["rename_method"] = rename_method
 
     # # Main Test -- Tracking
@@ -86,10 +85,6 @@ def test_main(rename_method):
 
     test.move("src/two_mv-1.txt", "src/two_moved-1.txt")
     test.move("src/two_mv-2.txt", "src/two_moved-2.txt")
-
-    # Change this back
-    test.config["dst_atomic_transfer"] = True
-    test.write_config()
 
     back = test.backup(offset=3)
     log = test.logs[-1][0]
@@ -1129,7 +1124,7 @@ def test_missing_hashes():
 
 
 if __name__ == "__main__":
-    #     test_main("reference")
+    test_main("reference")
     #     test_main("copy")
     #     test_shell()
     #     test_log_upload(True)
@@ -1152,7 +1147,7 @@ if __name__ == "__main__":
     #    test_snapshots(False)
     #     for reuse_hashes in [False, "mtime", "size"]:
     #         test_reuse_hashes_method(reuse_hashes)
-    test_missing_hashes()
+    #     test_missing_hashes()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

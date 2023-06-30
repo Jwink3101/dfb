@@ -441,8 +441,8 @@ def parse(argv=None, shebanged=False):
         "when",
         help=f"""
         Specify file modification prune time. The modification time of a file is when
-        the *next* file was written and not the original timestamp.
-        {ISODATEHELP}.""",
+        the *next* file was written and not the original timestamp. 
+        {ISODATEHELP.strip()}""",
     )
     prune.add_argument(
         "--subdir",

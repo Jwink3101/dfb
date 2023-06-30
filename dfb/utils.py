@@ -94,11 +94,6 @@ class star:
         return self.fun(*arg, *args, **kwargs)
 
 
-def swap_name(filename):
-    a, b = os.path.split(filename)
-    return os.path.join(a, f".swap.{b}")
-
-
 def tabulate(table, indent=2, sep="  "):
     """Fancy printing of data"""
     tabulated = []

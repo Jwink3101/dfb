@@ -1,5 +1,15 @@
 # Changelog
 
+## 20230630.0
+
+- Removes some features that are no longer necessary with rclone 1.63:
+    - Removes `dst_atomic_transfer` and supporting workaround. If you use a remote that is not atomic (e.g. sftp, ftp, local) and you do *not* want rclone to handle this, add `--inplace` to flags
+    - see note below
+- Adds a minimum rclone version and checks
+- **Minimumum rclone version is 1.63**
+
+Future versions will remove the special symlink handling but there are some bugs on the rclone side to be worked out first
+
 ## 20230623.0
 
 - Handles the situation when using `compare = 'hash'` but the checksum/hash is still missing, as can happen with some remotes. Falls back to `'size'` compare similar to rclone's behavior.

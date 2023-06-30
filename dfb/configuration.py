@@ -275,6 +275,12 @@ class Config:
         if self._config["links"] == "copy":
             self._config["rclone_flags"].append("--copy-links")
 
+        if not self._config.get("dst_atomic_transfer", True):
+            log(
+                "WARNING: 'dst_atomic_transfer = False' is deprecated since rclone 1.63 "
+                "handles it for non-atomic remotes"
+            )
+
     def __getattr__(self, attr):
         return self._config[attr]
 
@@ -380,12 +386,6 @@ links = 'skip' # {'skip','link','copy'}
 # split transfers into more connections as well.
 concurrency = os.cpu_count()
 
-# Some remotes such as local, FTP, and SFTP do not have atomic uploads. They can have
-# incomplete uploads took as if they are finished. If (src/dst)_atomic_transfer is False,
-# it will upload to a temp name and then move it.
-# Note that for restores, you must use a flag to do non-atomic transfers.
-dst_atomic_transfer = True 
-
 # Specify the attributes to decide if a source file is modified.
 #   "size"  : Did the size change. Acceptable but easy to have false negative
 #   "mtime" : Did the size and modification time change. Requires that source has
@@ -427,8 +427,7 @@ dst_renames = None # None means use 'renames'
 # False.
 #   'reference' : Use a small file that gives the relative position of the original
 #   'copy'      : Use a copy command. This is LESS efficient if your remote doesn't
-#                 support server-side-copy but it'll still work. Note that
-#                 'dst_atomic_transfer' is followed here too.
+#                 support server-side-copy but it'll still work.
 rename_method = 'reference' # 'reference' or 'copy'
 
 # When doing mtime comparisons, what is the error to allow. Ideally, this
