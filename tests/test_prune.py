@@ -72,11 +72,11 @@ def test_basic_cases():
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u2", *vq)
-    assert prune.rpaths == set()
+    assert set(prune.rpaths) == set()
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u4", *vq)
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("del3.19700101000001.txt", 4),
         ("dm5.19700101000001.txt", 3),
         ("dm7.19700101000001.txt", 3),
@@ -85,7 +85,7 @@ def test_basic_cases():
     # -
 
     prune = test.call("prune", "--dry-run", "u6", *vq)
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("del3.19700101000001.txt", 4),
         # Theoretically could have del3.19700101000003D.txt but this is missed as per the note
         ("del5.19700101000001.txt", 4),
@@ -98,7 +98,7 @@ def test_basic_cases():
     }
 
     prune = test.call("prune", "--dry-run", "u8", *vq)
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("del3.19700101000001.txt", 4),
         # Theoretically could have del3.19700101000003D.txt but this is missed as per the note
         ("del5.19700101000001.txt", 4),
@@ -124,7 +124,7 @@ def test_basic_cases():
     prune = test.call("prune", "u4", *vq)
 
     prune = test.call("prune", "u6", *vq)
-    assert prune.rpaths == (
+    assert set(prune.rpaths) == (
         {  # above's u6
             ("del3.19700101000001.txt", 4),
             ("del5.19700101000001.txt", 4),
@@ -144,7 +144,7 @@ def test_basic_cases():
     )
 
     prune = test.call("prune", "--dry-run", "u8", *vq)
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("del7.19700101000001.txt", 4),
         ("dm7.19700101000005.txt", 5),
         ("mix.19700101000005.txt", 4),
@@ -204,24 +204,24 @@ def test_moves():
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u2", *vq)
-    assert prune.rpaths == set()
+    assert set(prune.rpaths) == set()
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u4", *vq)
-    assert prune.rpaths == set()  # All are references
+    assert set(prune.rpaths) == set()  # All are references
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u6", *vq)
-    assert prune.rpaths == set()  # All are STILL references
+    assert set(prune.rpaths) == set()  # All are STILL references
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u8", *vq)
     # No longer need  the D to block the ref since there is a new one
-    assert prune.rpaths == {("f0.19700101000003D.txt", -1)}
+    assert set(prune.rpaths) == {("f0.19700101000003D.txt", -1)}
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u10", *vq)
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("f0.19700101000003D.txt", -1),  # From above
         (
             "f0.19700101000005.txt",
@@ -231,7 +231,7 @@ def test_moves():
 
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u12", *vq)
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("f0.19700101000003D.txt", -1),  # From above
         ("f0.19700101000005.txt", 4),  # Now  blocked by 7D
         ("f0.19700101000009.txt", 4),
@@ -303,21 +303,22 @@ def test_subdir():
     test.backup(offset=7)
 
     # Test it
-    assert test.call("prune", "--dry-run", "u4", *vq).rpaths == {
+    assert set(test.call("prune", "--dry-run", "u4", *vq).rpaths) == {
         ("mod.19700101000001.txt", 10),
         ("sub1/mod_sub.19700101000001.txt", 17),
     }
-    assert test.call("prune", "--dry-run", "u4", "--subdir", "sub1").rpaths == {
+    assert set(test.call("prune", "--dry-run", "u4", "--subdir", "sub1").rpaths) == {
         ("sub1/mod_sub.19700101000001.txt", 17)
     }
     assert (
-        test.call("prune", "--dry-run", "u6", "--subdir", "sub2", *vq).rpaths == set()
+        set(test.call("prune", "--dry-run", "u6", "--subdir", "sub2", *vq).rpaths)
+        == set()
     )
 
-    assert test.call("prune", "--dry-run", "u8", "--subdir", "sub2", *vq).rpaths == {
-        ("sub2/move_at_5.19700101000001.txt", 9)
-    }
-    assert test.call("prune", "--dry-run", "u8", *vq).rpaths == {
+    assert set(
+        test.call("prune", "--dry-run", "u8", "--subdir", "sub2", *vq).rpaths
+    ) == {("sub2/move_at_5.19700101000001.txt", 9)}
+    assert set(test.call("prune", "--dry-run", "u8", *vq).rpaths) == {
         ("mod.19700101000003.txt", 11),
         ("sub1/mod_sub.19700101000001.txt", 17),
         ("mod.19700101000001.txt", 10),
@@ -340,7 +341,7 @@ def test_disable():
     test.backup(offset=3)
 
     prune = test.call("prune", "--dry-run", "u4")
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("to_del.19700101000001.txt", 3),
         ("file.19700101000001.txt", 4),
     }
@@ -348,7 +349,7 @@ def test_disable():
     assert os.path.exists("dst/file.19700101000001.txt")
 
     prune = test.call("prune", "u4")
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("to_del.19700101000001.txt", 3),
         ("file.19700101000001.txt", 4),
     }
@@ -356,7 +357,7 @@ def test_disable():
     assert os.path.exists("dst/file.19700101000001.txt")
 
     prune = test.call("prune", "u4", "--override", "disable_prune = False")
-    assert prune.rpaths == {
+    assert set(prune.rpaths) == {
         ("to_del.19700101000001.txt", 3),
         ("file.19700101000001.txt", 4),
     }
@@ -364,12 +365,72 @@ def test_disable():
     assert not os.path.exists("dst/file.19700101000001.txt")
 
 
+def test_basic_versions():
+    test = testutils.Tester(name="prune_versions_basic")
+    test.write_config()
+
+    test.write_pre("src/mod_all.txt", "1")
+    test.write_pre("src/nomod.txt", "do not touch")
+    test.write_pre("src/del.txt", "del")
+    test.write_pre("src/mv.txt", "mv")
+    test.backup(offset=1)
+
+    test.write_pre("src/mod_all.txt", "13")
+    os.unlink("src/del.txt")
+    test.move("src/mv.txt", "src/moved.txt")
+    test.backup(offset=3)
+
+    test.write_pre("src/mod_all.txt", "135")
+    test.backup(offset=5)
+
+    test.write_pre("src/mod_all.txt", "1357")
+    test.backup(offset=7)
+
+    assert set(test.call("prune", "now", "-n").rpaths) == {
+        ("del.19700101000001.txt", 3),
+        ("mod_all.19700101000001.txt", 1),
+        ("mod_all.19700101000003.txt", 2),
+        ("mod_all.19700101000005.txt", 3),
+    }
+
+    assert set(test.call("prune", "now", "-N", "1", "-n").rpaths) == {
+        ("mod_all.19700101000001.txt", 1),
+        ("mod_all.19700101000003.txt", 2),
+    }
+
+    assert set(test.call("prune", "now", "-N", "2", "-n").rpaths) == {
+        ("mod_all.19700101000001.txt", 1),
+    }
+
+    # Forward in time. Remove the
+    assert set(test.call("prune", "u-1", "-N", "-2", "-n").rpaths) == {
+        ("del.19700101000001.txt", 3),
+        ("mod_all.19700101000001.txt", 1),
+    }
+
+    # Make sure you can't go beyond the latest
+    assert set(test.call("prune", "now", "-N", "-200", "-n").rpaths) == {
+        ("del.19700101000001.txt", 3),
+        ("mod_all.19700101000001.txt", 1),
+        ("mod_all.19700101000003.txt", 2),
+        ("mod_all.19700101000005.txt", 3),
+    }
+    assert set(test.call("prune", "u0", "-N", "-200", "-n").rpaths) == {
+        ("del.19700101000001.txt", 3),
+        ("mod_all.19700101000001.txt", 1),
+        ("mod_all.19700101000003.txt", 2),
+        ("mod_all.19700101000005.txt", 3),
+    }
+
+
 if __name__ == "__main__":
-    # test_basic_cases()
-    # test_moves()
-    # test_modes()
-    # test_subdir()
-    # test_disable()
+    #     test_basic_cases()
+    #     test_moves()
+    #     test_modes()
+    #     test_subdir()
+    #     test_disable()
+    test_basic_versions()
+
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

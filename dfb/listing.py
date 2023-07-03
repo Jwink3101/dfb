@@ -55,7 +55,6 @@ def ls(config):
         remove_delete=args.deleted == 0,
         delete_only=args.deleted > 1,
     )
-
     ####
     items = list(subdirs) + files
     items.sort(key=lambda i: i if isinstance(i, str) else i["apath"])
@@ -63,11 +62,11 @@ def ls(config):
     # Build a table
     table = []
     if not args.no_header:
-        table.append(["versions", "size", "ModTime", "Timestamp", "path"])
+        table.append(["versions", "total_size", "size", "ModTime", "Timestamp", "path"])
     for item in items:
         if isinstance(item, str):  # subdir
             item = item if args.full_path else os.path.relpath(item, args.path)
-            table.append(["", "", "", "", f"{item.removesuffix('/')}/"])
+            table.append(["", "", "", "", "", f"{item.removesuffix('/')}/"])
             continue
 
         versions = str(item["versions"])
@@ -93,18 +92,20 @@ def ls(config):
 
         if args.human:
             size = "{:0.2f} {}".format(*bytes2human(item["size"]))
+            tot_size = "{:0.2f} {}".format(*bytes2human(item["tot_size"]))
         else:
             size = str(item["size"])
+            tot_size = str(item["tot_size"])
 
         if item["size"] < 0:
             path = f"{path} (DEL)"
             size = "D"
-        table.append([versions, size, mtime, ts, path])
+        table.append([versions, tot_size, size, mtime, ts, path])
 
     if args.long == 0:
         table = [row[-1:] for row in table]
     elif args.long == 1:
-        table = [[row[1], row[2], row[4]] for row in table]
+        table = [[row[2], row[3], row[5]] for row in table]  # size,ModTime,path
     else:  # args.long == 2:
         pass  # Just to be more clear
 

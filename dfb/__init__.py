@@ -4,7 +4,7 @@ from .configuration import log, debug, LOCK
 from .utils import time2all
 from .timestamps import timestamp_parser
 
-__version__ = "20230630.0"
+__version__ = "20230703.0"
 MIN_RCLONE = 1, 63, 0
 
 

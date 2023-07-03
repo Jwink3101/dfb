@@ -95,10 +95,13 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     datetime object or epoch float
     """
     timestamp0 = timestamp
-    if isinstance(timestamp, str) and (
-        timestamp.startswith("i") or timestamp.startswith("u")
-    ):
-        timestamp = float(timestamp[1:])  # May have to deal with 2038 problem?
+    if isinstance(timestamp, str):
+        timestamp = timestamp.lower()
+        if timestamp.startswith("i") or timestamp.startswith("u"):
+            timestamp = float(timestamp[1:])  # May have to deal with 2038 problem?
+        elif timestamp.lower().strip() == "now":
+            timestamp = datetime.datetime.now().astimezone()
+
     if isinstance(timestamp, (int, float)):
         timestamp = datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
 

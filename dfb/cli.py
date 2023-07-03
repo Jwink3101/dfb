@@ -18,7 +18,8 @@ ISODATEHELP = """
     it is assumed *local* time. Alternatively, can specify unix time with a preceding
     'u'. Example: 'u1678560662'. Or can specify a time difference from the current
     time with any (and only) of the following: second[s], minute[s], hour[s], day[s], 
-    week[s]. Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter).
+    week[s]. Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). 
+    Can also specify "now" for the current time.
     """
 
 
@@ -367,7 +368,7 @@ def parse(argv=None, shebanged=False):
         default=0,
         help="""
             Long listing with size, ModTime, path. 
-            Specify twice for versions, size, ModTime, Timestamp, path.
+            Specify twice for versions, total_size, size, ModTime, Timestamp, path.
             """,
     )
 
@@ -443,6 +444,24 @@ def parse(argv=None, shebanged=False):
         Specify file modification prune time. The modification time of a file is when
         the *next* file was written and not the original timestamp. 
         {ISODATEHELP.strip()}""",
+    )
+    prune.add_argument(
+        "-N",
+        "--keep-versions",
+        default=0,
+        type=int,
+        dest="N",
+        help="""
+            Specify number of versions to keep past the specified time. This can be used
+            to prune versions only. For example, to keep only the last 10 versions, 
+            do "prune now -N 10". Can also be combined with a date. For example, to keep 
+            the last 4 versions older than 30 days, specify "prune '30 days' -N 4". 
+            Can also specify negative numbers to shift forward in 
+            time (advanced usage). 
+            """,
+        # Not keeping this in the docs but...
+        # For example, to prune the oldest 5 versions, you can do
+        # "prune u0 -N -6" (where you need to do one additional to account for the oldest).
     )
     prune.add_argument(
         "--subdir",

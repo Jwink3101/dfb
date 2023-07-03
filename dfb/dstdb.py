@@ -587,7 +587,20 @@ class DFBDST:
         conditions.append(["apath NOT LIKE ?", os.path.join(subdir, "%", "%")])
 
         # Use * then let SQL downselect before return
-        query = [f"SELECT *,COUNT(*) AS versions FROM items"]
+        query = [
+            """
+            SELECT
+                *, 
+                COUNT(*) AS versions,
+                SUM(
+                    CASE  
+                        WHEN size > 0 THEN size 
+                        ELSE 0
+                    END
+                ) as tot_size -- Need to account for -1 vals
+            FROM items
+            """
+        ]
         qvals = []
 
         query.append("WHERE")

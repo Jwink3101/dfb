@@ -288,7 +288,7 @@ def test_del():
 
 
 if __name__ == "__main__":
-    # test_listing()
+    test_listing()
     test_del()
     print("=" * 50)
     print(" All Passed ".center(50, "="))

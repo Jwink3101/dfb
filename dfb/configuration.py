@@ -188,7 +188,7 @@ class Config:
             self._config.pop(key, 0)
 
         self._validate()
-
+        log(f"ID: {self._uuid}")
         debug(f"Read config {self.configpath}")
         for k in self._config_keys:
             if k not in self._config:

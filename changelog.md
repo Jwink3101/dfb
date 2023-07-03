@@ -1,5 +1,15 @@
 # Changelog
 
+(newest on top)
+
+## 20230703.0
+
+- Adds a `-N N, --keep-versions N` flag to prune. This lets you control versions more carefully and do things like:
+    - Prune more than 15 copies: `prune now -N 15`
+- Adds "`now`" as a valid timestamp.
+- Adds the `ID:` to the log. Useful if messing with caches
+- Adds "`total_size`" to `ls -ll`
+
 ## 20230630.0
 
 - Removes some features that are no longer necessary with rclone 1.63:

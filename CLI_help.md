@@ -157,6 +157,7 @@ optional arguments:
                         the current time with any (and only) of the following:
                         second[s], minute[s], hour[s], day[s], week[s]. Example: "10
                         days 1 hour 4 minutes 32 seconds". (The order doesn't matter).
+                        Can also specify "now" for the current time.
   --no-check            Disable rclone comparing the source and the dest. If set, will
                         restore everything
   --source-dir SOURCE   Source directory. Default is the root
@@ -235,6 +236,7 @@ optional arguments:
                         the current time with any (and only) of the following:
                         second[s], minute[s], hour[s], day[s], week[s]. Example: "10
                         days 1 hour 4 minutes 32 seconds". (The order doesn't matter).
+                        Can also specify "now" for the current time.
   --no-check            Disable rclone comparing the source and the dest. If set, will
                         restore everything
   --to                  Assumes 'dest' is a file, not a directory. (i.e., uses 'rclone
@@ -303,7 +305,7 @@ optional arguments:
                         to ONLY include deleted files
   --full-path           Show full path when listing subdirs
   -l, --long            Long listing with size, ModTime, path. Specify twice for
-                        versions, size, ModTime, Timestamp, path.
+                        versions, total_size, size, ModTime, Timestamp, path.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -321,7 +323,7 @@ Time Specification:
   'u'. Example: 'u1678560662'. Or can specify a time difference from the current
   time with any (and only) of the following: second[s], minute[s], hour[s], day[s],
   week[s]. Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't
-  matter).
+  matter). Can also specify "now" for the current time.
 
   --at TIMESTAMP, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
@@ -398,7 +400,7 @@ Time Specification:
   'u'. Example: 'u1678560662'. Or can specify a time difference from the current
   time with any (and only) of the following: second[s], minute[s], hour[s], day[s],
   week[s]. Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't
-  matter).
+  matter). Can also specify "now" for the current time.
 
   --at TIMESTAMP, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
@@ -501,7 +503,7 @@ for a reference file
 ```text
 usage: dfb prune [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                  [-o 'OPTION = VALUE'] [--refresh] [-n] [-i]
-                 [--shell-script DEST or -] [--subdir dir]
+                 [--shell-script DEST or -] [-N N] [--subdir dir]
                  when
 
 positional arguments:
@@ -516,10 +518,19 @@ positional arguments:
                         'u1678560662'. Or can specify a time difference from the
                         current time with any (and only) of the following: second[s],
                         minute[s], hour[s], day[s], week[s]. Example: "10 days 1 hour
-                        4 minutes 32 seconds". (The order doesn't matter).
+                        4 minutes 32 seconds". (The order doesn't matter). Can also
+                        specify "now" for the current time.
 
 optional arguments:
   -h, --help            show this help message and exit
+  -N N, --keep-versions N
+                        Specify number of versions to keep past the specified time.
+                        This can be used to prune versions only. For example, to keep
+                        only the last 10 versions, do "prune now -N 10". Can also be
+                        combined with a date. For example, to keep the last 4 versions
+                        older than 30 days, specify "prune '30 days' -N 4". Can also
+                        specify negative numbers to shift forward in time (advanced
+                        usage).
   --subdir dir          Prune only files in 'dir'. In order to ensure that references
                         do not break, this is mostly just a filter of what will be
                         pruned rather than a major performance enhancement.

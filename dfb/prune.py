@@ -35,8 +35,17 @@ class Prune:
         )
         self.dstdb = PruneableDFBDST(config)
 
-        log(f"Pruning to {timestamp_parser(self.when,aware=True).isoformat()}")
-        self.rpaths = self.dstdb.prune_rpaths(self.when, subdir=self.args.subdir)
+        msg = f"Pruning to {timestamp_parser(self.when,aware=True).isoformat()} "
+        if self.args.N > 0:
+            msg += f"and keeping {self.args.N} additional older version{'s' if self.args.N>1 else ''}"
+        if self.args.N < 0:
+            msg += f"plus removing {-self.args.N} additional newer version{'s' if self.args.N<-1 else ''}"
+        log(msg.strip() + ".")
+
+        self.rpaths = self.dstdb.prune_rpaths(
+            self.when, self.args.N, subdir=self.args.subdir
+        )
+        self.rpaths = sorted(self.rpaths)
         if not self.rpaths:
             log("Nothing to prune")
             return
@@ -110,7 +119,7 @@ class Prune:
 
 
 class PruneableDFBDST(DFBDST):
-    def prune_rpaths(self, when, subdir=""):
+    def prune_rpaths(self, when, keep, subdir=""):
         # Pruning is more complex than it seems at first because of reference files.
         # We do not want to delete files still being references. We also don't want
         # to delete a delete-marker that "hides" those still-referenced files.
@@ -125,14 +134,18 @@ class PruneableDFBDST(DFBDST):
 
         # Step 1a: Bisect the group to find the cutoff spot, when <= ts
         #          (<= means bisect_right). icut = iwhen - 1
-        # Step 1b: If there is nothing before the cutoff, keep it all (icut = 0)
-        # Step 1c: Keep everything to the right of icut. Universal set
-        # Step 1d: Save the group to the left of icut. Grouped list
+        # Step 1b: Shift by "keep" to keep specified versions
+        # Step 1c: If there is nothing before the cutoff, keep it all (icut = 0) and
+        #          make sure to also keep at least one
+        # Step 1d: Keep everything to the right of icut. Universal set
+        # Step 1e: Save the group to the left of icut. Grouped list
         keep_rpaths = set()
         del_groups = {}
         for name, group in groups:
             iwhen = keyed_bisect_right(group, when, key=itemgetter("timestamp"))  # 1a
-            icut = max([iwhen - 1, 0])  # 1a,b
+            iwhen -= keep  # 1b
+            icut = max([iwhen - 1, 0])  # 1a,c
+            icut = min([icut, len(group) - 1])  # 1c -- keep at least one
             keep_rpaths.update(row["rpath"] for row in group[icut:])
             del_groups[name] = group[:icut]
 
