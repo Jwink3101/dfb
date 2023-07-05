@@ -2,6 +2,13 @@
 
 (newest on top)
 
+## 20230705.0
+
+- Do not write debug to file except in testing. This was a leftover artifact that mostly didn't matter except when pruning a large backup, it was writing a line for 2-3x the number of files. 
+- Better pypy support:
+    - Added a dir creation that *shouldn't* be needed but seems to be under pypy. I will try to figure that out
+    - Testing fails due to "open files". I think pypy should work but it is only lightly tested.
+
 ## 20230703.0
 
 - Adds a `-N N, --keep-versions N` flag to prune. This lets you control versions more carefully and do things like:

@@ -821,7 +821,7 @@ class Rclone:
         return out, err
 
     def _Popen(self, *args, **kwargs):
-        return subprocess.Popen(*args, **kwargs)
+        return subprocess.Popen(*args, close_fds=True, **kwargs)
 
     def debug(self, *args, **kwargs):
         """Debug. Can subclass as needed"""

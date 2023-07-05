@@ -31,6 +31,11 @@ class Log:
         """print() to the log with date"""
         verbosity = int(verbosity)
 
+        # I have been saving the debug but it can be just too slow when it needs to
+        # write a lot of debugs.
+        if not _TEMPDIR and verbosity > self.verbosity:
+            return
+
         t = [time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())]
         if verbosity == 2:
             t.append("DEBUG")
@@ -60,10 +65,12 @@ class Log:
         del kwargs["file"]
 
         with LOCK:  # Append should be atomic but just in case, lock it along with print
+            # I have no idea why I need this. It only seems to be an issue under pypy
+            # but it is quick so I will keep it
+            self.tmpdir.mkdir(parents=True, exist_ok=True)
+
             if verbosity > self.verbosity:
-                # I may choose to comment this out in the future. I like the idea of
-                # always being able to access the more verbose log but the compares can
-                # get to be too much...
+                # See note above
                 with open(self.debug_file, mode="at") as fobj:
                     print(lines, file=fobj)
             else:
