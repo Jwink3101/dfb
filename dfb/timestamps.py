@@ -44,7 +44,9 @@ def timedelta_parser(deltastr):
             continue  # the [:-1] removes an "s"
 
         val = re.search(
-            r"([\d|\.]+)\ *?KEY?".replace("KEY", key), deltastr, flags=re.IGNORECASE
+            r"([\d|\.]+)\ *?KEY?".replace("KEY", key),
+            deltastr,
+            flags=re.IGNORECASE,
         )
         if val:
             delta[key] = float(val.group(1))
@@ -65,12 +67,12 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     precision. While it will accept nanosecond precision, it will not capture beyond
     microseconds due to Python's limitations.
 
-    Alternatively, if timestamp is an integer or "i<integer>", it will be considered
-    the UNIX Epoch time.
+    Alternatively, if timestamp is an integer or "i<integer>" or "u<integer>", it will
+    be considered the UNIX Epoch time.
 
     Only accepts time zone offsets, not names. Years MUST be four digits. Can also accept
-    just date specification but still must be four digit years and can accept times
-    without minutes or seconds
+    just a date without time (e.g. 2022-06-25) but still must be four digit years.
+    Can also accept times without minutes or seconds
 
     Inputs:
     -------
@@ -79,7 +81,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
 
     aware [False]
         If True, will assume timestamps without specified timezones are in
-        local time. If set to 'utc', will assume the unsepcified time zone IS utc time.
+        LOCAL time. If set to 'utc', will assume the unsepcified time zone IS utc time.
 
         If a timezone is in the timestamp, this will have no effect
 
@@ -110,7 +112,8 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     if isinstance(timestamp, datetime.datetime):
         dt = timestamp
 
-        # https://stackoverflow.com/a/27596917 and https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive
+        # https://stackoverflow.com/a/27596917 and
+        # https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive
         isaware = dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
         if (aware or utc) and not isaware:
             if aware == "utc":

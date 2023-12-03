@@ -1123,8 +1123,49 @@ def test_missing_hashes():
         _FAIL.remove("missing_hashes")
 
 
+@pytest.mark.parametrize("metadata", [True, False])
+def test_metadata(metadata):
+    test = testutils.Tester(name="metadata")
+    test.config["metadata"] = metadata
+    test.write_config()
+
+    uu = 4, 6, 7
+    gg = oo = tuple(range(8))
+    for u, g, o in itertools.product(uu, gg, oo):
+        filename = f"{u}{g}{o}.txt"
+        perm = int(f"{u}{g}{o}", 8)
+        test.write_pre(f"src/{filename}", filename)
+        os.chmod(f"src/{filename}", perm)
+
+    test.backup(offset=1)
+    test.call("restore", "--at", "u1.1", str(test.pwd / f"res1"))
+
+    # This is slow so I comment it out but it has been tested and I can come back to it.
+    # restore_dir = str(test.pwd / "res2")
+    # restore_script = str(test.pwd / "res2.sh")
+    # test.call("restore","--at","u1.1",restore_dir,"--shell-script",restore_script)
+    # subprocess.check_call(["bash", restore_script])
+
+    # Verify the src too just to be complete
+    n = 0
+    correct = 0
+    vdirs = ["src", "dst", "res1"]  # ,'res2']
+    for vdir in vdirs:
+        for file in os.listdir(vdir):
+            gold = file.split(".", 1)[0]
+            mode = os.stat(os.path.join(vdir, file)).st_mode
+            correct += int(oct(mode).endswith(gold))
+            n += 1
+    print(f"verified {n}. Correct {correct}")
+
+    if metadata:
+        assert correct == n
+    else:
+        assert correct < n
+
+
 if __name__ == "__main__":
-    test_main("reference")
+    # test_main("reference")
     #     test_main("copy")
     #     test_shell()
     #     test_log_upload(True)
@@ -1148,6 +1189,8 @@ if __name__ == "__main__":
     #     for reuse_hashes in [False, "mtime", "size"]:
     #         test_reuse_hashes_method(reuse_hashes)
     #     test_missing_hashes()
+    #     test_metadata(True)
+    #     test_metadata(False)
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

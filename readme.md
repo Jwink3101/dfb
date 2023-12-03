@@ -243,6 +243,7 @@ Note, unlike [rirb][rirb], there is *no need to refresh next time* because the f
 - Restore:
     - It is possible to create edge cases with symlink handling by having non-symlinks on the source names `<name>.rclonelink`. This is still mostly handled but can cause issues with some sources
     - Restore of symlinks is manual. See above for a Python snippet to rebuild links.
+- (work in progress) Metadata isn't preserved on B2 but works via the S3 API
 
 **Roadmap**:
 

@@ -2,3 +2,4 @@ testdirs/
 TEMP/
 src/
 .coverage
+metadata/

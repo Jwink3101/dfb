@@ -11,7 +11,7 @@ import shlex
 
 # This can be standalone but will just use the one in rcloneapi which is designed to
 # be its own
-from .timestamps import timestamp_parser
+from .timestamps import timestamp_parser, iso8601_parser
 from . import log, debug
 
 tsrep = namedtuple("timestamps", ("ts", "dt", "obj", "pretty"))

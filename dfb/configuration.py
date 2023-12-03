@@ -505,7 +505,8 @@ upload_snapshots = True
 # Also store and transfer metadata. Uses rclone's metadata capabilities
 # as outlined at https://rclone.org/docs/#metadata.
 # Not all remotes (either source or dest) can read/write this but, if it can
-# be read on the source, it will be preserved in the filelist
+# be read on the source, it will be preserved in the filelist.
+# Note: Changing metadata will not backup the file again and will likely not be preserved
 metadata = True
 
 # Pruning is the only distructive process in dfb. In order to make sure it isn't done by
