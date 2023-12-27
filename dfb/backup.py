@@ -202,7 +202,7 @@ class Backup:
         modtime = (
             config.get_modtime
             or config.compare == "mtime"
-            or (config.cliconfig.refresh and config.dst_compare == "mtime")
+            or config.dst_compare == "mtime"
             or config.renames == "mtime"
             or (compute_hashes and config.reuse_hashes == "mtime")
         )

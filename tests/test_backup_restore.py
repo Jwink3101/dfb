@@ -150,7 +150,8 @@ def test_main(rename_method):
 
     # + tags=[]
     test.call("snapshot", "--output", "A.jsonl")
-    test.call("snapshot", "--refresh", "--output", "B.jsonl")
+    test.call("refresh")
+    test.call("snapshot", "--output", "B.jsonl")
 
     with open("A.jsonl") as fp:
         A = [json.loads(line) for line in fp]
@@ -166,13 +167,15 @@ def test_main(rename_method):
     assert A == B
 
     ## Test reference format v2
-    test.call("ls", "-vv", "--refresh")
+    test.call("refresh", "-vv")
     log = test.logs[-1][0]
     if rename_method == "reference":
         assert "Reference 'moved_again.19700101000005R.txt' is v2" in log
+
+        # test format v1
         with open("dst/moved_again.19700101000005R.txt", "wt") as fp:
             fp.write("sub/move.19700101000001.txt")
-        test.call("ls", "-vv", "--refresh")
+        test.call("refresh", "-vv")
         log = test.logs[-1][0]
         assert "Reference 'moved_again.19700101000005R.txt' is v1 (implied)" in log
 
@@ -548,7 +551,8 @@ def test_shell_scripts(rename_method):
         "will move.txt",
     }  # These are wrong!
 
-    test.call("ls", "--refresh", "--no-header")
+    test.call("refresh")
+    test.call("ls", "--no-header")
     items = {l.strip() for l in test.logs[-1][0].split("\n") if l.strip()}
     assert items == {
         "do nothing.txt",
@@ -632,7 +636,7 @@ def test_restore_error():
     assert "At least one restore did not work." in log
 
     test.call("versions", "sub/file2.txt")
-    test.call("versions", "sub/file2.txt", "--refresh")
+    test.call("refresh")
     test.call(
         "restore-file",
         "sub/file2.txt",
@@ -746,8 +750,10 @@ def test_missing_ref():
         pass
     # -
 
-    test.call("ls", "--refresh", "-q")
-    log = test.logs[-1][0]
+    test.call("refresh")
+    test.call("ls", "-q")
+
+    log = "\n".join(l[0] for l in test.logs[-2:])
     assert (
         "WARNING: File 'fileONE.19700101000003R.txt' references 'file1.19700101000001.txt' but it is missing. Will just be treated as deleted"
         in log
@@ -883,7 +889,8 @@ def test_symlinks(mode, shell):
             ./back.sh""",
             shell=True,
         )
-        test.call("ls", "--refresh")  # Refresh b/c shell
+        test.call("refresh")  # Refresh b/c shell
+        test.call("ls")
 
     if mode == "link":
         assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
@@ -1165,7 +1172,7 @@ def test_metadata(metadata):
 
 
 if __name__ == "__main__":
-    # test_main("reference")
+    #     test_main("reference")
     #     test_main("copy")
     #     test_shell()
     #     test_log_upload(True)

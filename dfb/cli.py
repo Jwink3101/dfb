@@ -83,18 +83,6 @@ def parse(argv=None, shebanged=False):
             "Can specify multiple times. There is no input validation of any sort."
         ),
     )
-
-    config_global_group.add_argument(
-        "--refresh",
-        action="store_true",
-        help="""
-            Refresh the local cache with a real listing of the remote destination. 
-            This can be much slower as it must list all versions of all files
-            however, it is useful if something has changed at the remote outside of
-            %(prog)s (e.g., manual pruning). When used, will use 'remote_compare' attribute
-            instead of 'compare'.""",
-    )
-
     global_parent = argparse.ArgumentParser(add_help=False)
     global_group = global_parent.add_argument_group(
         title="Global Settings",
@@ -218,6 +206,33 @@ def parse(argv=None, shebanged=False):
             ⚠⚠⚠USE WITH CAUTION!⚠⚠⚠
             """,
     )
+    backup.add_argument(
+        "--refresh",
+        action="store_true",
+        help="""
+            Refresh the local cache with a real listing of the remote destination. 
+            This can be much slower as it must list all versions of all files
+            however, it is useful if something has changed at the remote outside of
+            %(prog)s (e.g., manual pruning). When used, will use 'remote_compare' attribute
+            instead of 'compare'. This is the same as running `refresh` command but
+            will list simultaneously.""",
+    )
+
+    #################################################
+    ## Backup
+    #################################################
+
+    refresh = subparsers["refresh"] = subpar.add_parser(
+        "refresh",
+        parents=[global_parent, config_global],
+        help="""
+            Refresh the local cache with a real listing of the remote destination
+            Same as calling backup with `--refresh` but
+            can be used outside of a backup
+            """,
+    )
+
+    # Future: Add ways to restore from file lists. For now, it *must* just list.
 
     #################################################
     ## restore-dir
@@ -575,15 +590,13 @@ def _cli(cliconfig):
             back.run()  # ... if it fails
             return back
 
-        # Handle refresh on the others
-        if getattr(cliconfig, "refresh", False):
+        elif cliconfig.command == "refresh":
             from .dstdb import DFBDST
 
             DFBDST(config).reset()
+            return config
 
-        ################
-
-        if cliconfig.command == "snapshot":
+        elif cliconfig.command == "snapshot":
             from .listing import snapshot
 
             snapshot(config)

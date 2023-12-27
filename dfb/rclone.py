@@ -240,6 +240,7 @@ class RC:
             )
 
     def read(self, src):
+        ## TODO: Add range options
         self.start_rc()
 
         fs, file = rcpathsplit(src)

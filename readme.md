@@ -15,14 +15,21 @@ Full-file, append-only, backups that can be easily restored to any point in time
 
 **The premise**: When a file is uploaded, the date is appended to the name. This allows you to see the state of the backup by only considering times <= a time of interest. Deleted files are represented with a delete marker. Optionally, moves can be tracked with references.
 
-Like its cousin, [rirb][rirb], dfb is not the most efficient, advanced, fast, featurefull,  sexy, or sophisticated. However, this approach is **simple, easy to use, and easy to understand**. No special tools are needed to restore and full copies of the files are stored as opposed to in chunks (which has pros and cons). For backups, I think these are great tradeoffs.
+Like its cousin, [rirb][rirb], dfb is not the most efficient, advanced, fast, featurefull,  sexy, or sophisticated. However, this approach is **simple, easy to use, and easy to understand**. No special tools are needed to restore and full copies of the files are stored as opposed to in chunks (which has pros and cons). For backups, I think these are great tradeoffs. And, for what it's worth, popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap], and rsync with `--link-dest` ([example][rs]) have the same or even *worse* tradeoffs. They are full-file and don't even track moves. 
 
-## Project Goals:
+Design Tenets:
 
-* Be simple to understand, inspect, and even restore without the need for dfb itself. **The tool is only a convenience for restore; not a requirement**.
-    * By design, even without documentation, the format can be easily reverse engineered.
-* Allow for rollback to any point-in-time as a first-class option (i.e. no crazy scripting)
-* Support append-only/immutable storage natively
+- **Easy to understand, interrogate, and restore**. The backup format is easily comprehended and can be reverse engineered without any real technical knowledge. No special tools are needed to restore in theory (except if using crypt, you need to decrypt it). The format is about as straightforward as possible
+- **Backup full copies of all files**. Related to the above, all files are full copies that can be downloaded right away. This is *less efficient* but that comes with the advantages noted above
+- **Restore to any point in time**. Can easily rollback to any point-in-time without any scripting or interrogating logs. (Assuming it has not been pruned)
+    - **Continuous in time is better than snapshots**. So many tools work off of snapshots. This does enable pruning like "keep 1 snapshot per week" but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point-in-time continuously *and* look at all versions of a specific file. Pruning capabilities let you specify a cut-off time and/or a number of versions to keep
+- **Support append-only/immutable storage natively**. There is never a need to delete files except for pruning. Nothing ever gets renamed, deleted, or modified.
+
+
+
+[tm]:https://support.apple.com/en-us/HT201250
+[rsnap]:https://rsnapshot.org/
+[rs]:https://web.archive.org/web/20230830063440/https://digitalis.io/blog/linux/incremental-backups-with-rsync-and-hard-links/
 
 [rirb]:https://github.com/Jwink3101/rirb
 
@@ -38,6 +45,8 @@ When files are backed up, they are renamed to have the date of the backup in the
 
 where the time is *always in UTC (Z) time*. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is a tiny file with `D` and if a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
 
+Directory names are unchanged.
+
 ## Install
 
 Just install from github directly.
@@ -52,9 +61,9 @@ To start, run:
 
 The config file is **heavily and extensively documented**. It is read on Python without any sandboxing so make sure it is trusted. Some variables are defined inline including `os` and a few modules. The variables `__file__` and `__dir__` are `pathlib.Path` objects for the config file and the directory of the config file respectively. These can be used to specify paths to things like files for `--filter-from`.
 
-The config file is heavily documented. The most important thing is setting the attributes. Unlike rclone, these are not done to defaults for each remote. For example, you shouldn't use `mtime` on WebDAV since it's not well supported.
+The config file is heavily documented. The most important thing is setting the attributes. Unlike rclone, these are not done to defaults for each remote. For example, you shouldn't use `mtime` on WebDAV since it's not well supported (except on certain ones).
 
-Most comparisons are past-source-to-source but occasionally, such as after a `--refresh`, they are source-to-destination. In that case, it is possible to set different values.
+Most comparisons are past-source-to-past-source but occasionally, such as after a `--refresh`, they are source-to-destination. In that case, it is possible to set different values.
 
 Assuming this is a new setup, just run it:
 
@@ -82,9 +91,6 @@ The database is stored in:
     <rclone cache dir>/DFB/<_uuid from config>.db
 
 Where "`rclone cache dir`" is found from: `$ rclone config paths`
-    
-
-## Configuration
 
 ### Comparison and Rename Attributes
 
@@ -92,41 +98,91 @@ The attributes for comparison and for renames are user settable. If both remotes
 
 Generally speaking, comparisons and renames are actually source-to-source because the source values are saved. However, if run with `--refresh`, then comparisons and move-tracking are source-to-dest. In that case, you can set `dst_compare` and `dst_renames`. 
 
-Examples:
-
-**Local to WebDAV** and **Local to S3**
-
-WebDAV doesn't support ModTime and S3 does but it is super slow
-
-```python
-compare = 'mtime'
-dst_compare = 'size'
-renames = 'mtime'
-dst_renames = False
-```
-This will disable rename tracking when using `--refresh` since size is not a good rename tracker.
-
-**S3 to S3**:
-
-Use hashes since they both support it
-
-```python
-compare = 'hash'
-dst_compare = None
-renames = 'hash'
-dst_renames = None
-```
-
-**S3 to Local**
-
-Use hashes for itself
-
-```
-compare = 'hash'
-dst_compare = 'size'
-renames = 'hash'
-dst_renames = False
-```
+<table>
+    <tr>
+        <th>Source</th>
+        <th>Destination</th>
+        <th><code>compare</code></th>
+        <th><code>dst_compare</code></th>
+        <th><code>renames</code></th>
+        <th><code>dst_renames</code></th>
+        <th>Comment</th>
+    </tr>
+    <tr>
+        <td>Local</td>
+        <td>
+            Any remote that supports ModTime including 
+            local, B2, OneDrive, DropBox, [Google] Drive,
+            [S]FTP, <strong>certain</strong> WebDAV. <strong>NOT</strong> S3.
+        </td>
+        <td>'mtime'</td>
+        <td>None</td>
+        <td>'mtime'</td>
+        <td>None</td>
+        <td>Use 'mtime' since it easy and fairly reliable</td>
+    </tr>
+        <td>Local</td>
+        <td>
+            S3, <em>Regular</em> WebDAV
+        </td>
+        <td>'mtime'</td>
+        <td>'size'</td>
+        <td>'mtime'</td>
+        <td>False</td>
+        <td>
+            Use 'mtime' when using past source data but switch to size
+            when using <code>dst_</code> since mtime is either super slow
+            (S3) or unreliable (WebDAV). Since 'size' is a poor file tracker,
+            disable renames in that case.
+        </td>
+    </tr>
+    <tr>
+        <td colspan="2">
+            <strong>Identical</strong> cloud-to-cloud that support fast hashing (i.e. not SFTP). Or if the same hash is supported (e.g. S3 to Azure)
+        </td>
+        <td>'hash'</td>
+        <td>None</td>
+        <td>'hash'</td>
+        <td>None</td>
+        <td>Use 'hash' since it is fast and reliable</td>
+    </tr>
+    <tr>
+        <td colspan="2">
+            <strong>Different</strong> cloud-to-cloud that support fast hashing (i.e. not SFTP)
+        </td>
+        <td>'hash'</td>
+        <td>'size'</td>
+        <td>'hash'</td>
+        <td>None</td>
+        <td>
+            Won't have hashes on both. Can change 'size' to 'mtime' if both 
+            support it and one is not S3 (where 'mtime' is slow)
+        </td>
+    </tr>
+    <tr>
+        <td>Cloud that supports fast hashing</td>
+        <td>Local or SFTP</td>
+        <td>'hash'</td>
+        <td>'size'</td>
+        <td>'hash'</td>
+        <td>None</td>
+        <td>
+            Can change 'size' to 'mtime' if  
+            not S3 (where 'mtime' is slow)
+        </td>
+    </tr>
+    <tr>
+        <td>regular WebDAV, Mega, Seafile, any other non-mod-time remote</td>
+        <td>Anything</td>
+        <td>'size'</td>
+        <td>None</td>
+        <td>False</td>
+        <td>False</td>
+        <td>
+            Only use size to detect changed files. Good enough most of the time but unreliable for move detection
+        </td>
+    </tr>
+</table>
 
 ### Override
 
@@ -176,7 +232,7 @@ You will see a table of all versions of the file. Note that `--ref-count` is inc
 
 Simply identify the versions you wish to delete, copy the Real Path, and run
 
-    $ rclone delete myremote:my/large/file.<timestampe>.ext
+    $ rclone delete myremote:my/large/file.<timestamp>.ext
 
 Afterwards, you should refresh the file listings. Most calls can have a `--refresh` but a simple one is just
 
@@ -227,13 +283,21 @@ Simple answer: Tradeoff of compactness and precision. Long filenames can be toug
 As an aside, I considered other options. I considered adding Z to the timestamp to be explicit on timezone but decided it wasn't worth it. I tried shortening it by using unix time which is nice but hard to parse. I even tried encoding the filenames with letters but
 that makes it even *harder* to human parse. It is not recommended but in practice any ISO8601 formatted date, with and without timezones, will be parsed (with omitted timezones assumed UTC).
 
+### Why not use the date in the root folder?
+
+Rather than `path/to/file.<date>.ext`, dfb could have done `<date>path/to/file.ext`. I strongly considered that and it would have made some things easier but the problem is that (a) interrogating the backup manually would have been *much* harder and walking the file system could have been much more expensive!
+
+### Don't you end up with a lot of files in a directory?
+
+Yep. Certainly possible and that is a tradeoff. One way to deal with it is to split is manually and use [rclone union](https://rclone.org/union/) to join them. While some remotes get uncomfortable with too many files, rclone can handle it just fine.
+
 ### What happens if a transfer is interrupted.
 
 **Short answer:** Run it again and it'll be fine! You will lose the progress of active transfers but they will be fixed and it'll keep going.
 
 Long answer: Incomplete versions may show up but will, by definition, a new version will be uploaded next time. It is also possible if an interruption is in the very short time between upload and saving in the database, that a complete version will be there and you upload again.
 
-Note, unlike [rirb][rirb], there is *no need to refresh next time* because the files themselves define the state and the local cache is updated per-file.
+Note, *unlike* [rirb][rirb], there is *no need to refresh next time* because the files themselves define the state and the local cache is updated per-file.
 
 ### What are the known issues and what is on the roadmap
 

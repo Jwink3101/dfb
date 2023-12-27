@@ -26,6 +26,9 @@ Commands:
   command
     init                write a new config file.
     backup              Run a backup
+    refresh             Refresh the local cache with a real listing of the remote
+                        destination Same as calling backup with `--refresh` but can be
+                        used outside of a backup
     restore-dir (restore)
                         Restore a (sub)directory to a specified location
     restore-file        Restore a file to a specified location, file, or to stdout
@@ -68,8 +71,8 @@ Global Settings:
 
 ```text
 usage: dfb backup [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
-                  [-o 'OPTION = VALUE'] [--refresh] [-n] [-i]
-                  [--shell-script DEST or -] [--subdir SUBDIR]
+                  [-o 'OPTION = VALUE'] [-n] [-i] [--shell-script DEST or -]
+                  [--subdir SUBDIR] [--refresh]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -82,6 +85,13 @@ optional arguments:
                         interactive' to verify! The variable 'subdir' is also defined
                         in the config file which can be used with conditionals. ⚠⚠⚠USE
                         WITH CAUTION!⚠⚠⚠
+  --refresh             Refresh the local cache with a real listing of the remote
+                        destination. This can be much slower as it must list all
+                        versions of all files however, it is useful if something has
+                        changed at the remote outside of dfb backup (e.g., manual
+                        pruning). When used, will use 'remote_compare' attribute
+                        instead of 'compare'. This is the same as running `refresh`
+                        command but will list simultaneously.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -106,12 +116,6 @@ Config & Cache Settings:
                         file. These can be used with conditionals to control
                         overrides. See readme for details.Can specify multiple times.
                         There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote
-                        destination. This can be much slower as it must list all
-                        versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb backup (e.g., manual
-                        pruning). When used, will use 'remote_compare' attribute
-                        instead of 'compare'.
 
 Execution Settings:
   Precedance follows the order specified in this help
@@ -127,13 +131,49 @@ Execution Settings:
 
 ```
 
+# refresh
+
+
+```text
+usage: dfb refresh [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                   [-o 'OPTION = VALUE']
+
+optional arguments:
+  -h, --help            show this help message and exit
+
+Global Settings:
+  Default verbosity is 1 for backup/restore/prune and 0 for listing
+
+  -v, --verbose, --debug
+                        +1 verbosity
+  -q, --quiet           -1 verbosity
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+
+Config & Cache Settings:
+  --config file         (Required) Specify config file. Can also be specified via the
+                        $DFB_CONFIG_FILE environment variable or is implied if
+                        executing the config file itself. $DFB_CONFIG_FILE is
+                        currently not set.
+  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be proper
+                        Python (e.g. quoted strings). Example: --override "compare =
+                        'mtime'". Override text is evaluated before *and* after the
+                        config file however, the variables 'pre' and 'post' are
+                        defined as True or False if it is before or after the config
+                        file. These can be used with conditionals to control
+                        overrides. See readme for details.Can specify multiple times.
+                        There is no input validation of any sort.
+
+```
+
 # restore-dir
 
 
 ```text
 usage: dfb restore-dir [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
-                       [-o 'OPTION = VALUE'] [--refresh] [--at TIMESTAMP] [--no-check]
-                       [-n] [-i] [--shell-script DEST or -] [--source-dir SOURCE]
+                       [-o 'OPTION = VALUE'] [--at TIMESTAMP] [--no-check] [-n] [-i]
+                       [--shell-script DEST or -] [--source-dir SOURCE]
                        dest
 
 Restore a (sub)directory to a specified location
@@ -185,12 +225,6 @@ Config & Cache Settings:
                         file. These can be used with conditionals to control
                         overrides. See readme for details.Can specify multiple times.
                         There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote
-                        destination. This can be much slower as it must list all
-                        versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb restore-dir (e.g., manual
-                        pruning). When used, will use 'remote_compare' attribute
-                        instead of 'compare'.
 
 Execution Settings:
   Precedance follows the order specified in this help
@@ -211,8 +245,8 @@ Execution Settings:
 
 ```text
 usage: dfb restore-file [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
-                        [-o 'OPTION = VALUE'] [--refresh] [--at TIMESTAMP]
-                        [--no-check] [-n] [-i] [--shell-script DEST or -] [--to]
+                        [-o 'OPTION = VALUE'] [--at TIMESTAMP] [--no-check] [-n] [-i]
+                        [--shell-script DEST or -] [--to]
                         source dest
 
 positional arguments:
@@ -265,12 +299,6 @@ Config & Cache Settings:
                         file. These can be used with conditionals to control
                         overrides. See readme for details.Can specify multiple times.
                         There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote
-                        destination. This can be much slower as it must list all
-                        versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb restore-file (e.g.,
-                        manual pruning). When used, will use 'remote_compare'
-                        attribute instead of 'compare'.
 
 Execution Settings:
   Precedance follows the order specified in this help
@@ -292,8 +320,8 @@ Execution Settings:
 ```text
 usage: dfb ls [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
               [--after TIMESTAMP] [--only TIMESTAMP] --config file
-              [-o 'OPTION = VALUE'] [--refresh] [--no-header] [--human]
-              [--timestamp-local] [-d] [--full-path] [-l]
+              [-o 'OPTION = VALUE'] [--no-header] [--human] [--timestamp-local] [-d]
+              [--full-path] [-l]
               [path]
 
 positional arguments:
@@ -351,12 +379,6 @@ Config & Cache Settings:
                         file. These can be used with conditionals to control
                         overrides. See readme for details.Can specify multiple times.
                         There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote
-                        destination. This can be much slower as it must list all
-                        versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb ls (e.g., manual
-                        pruning). When used, will use 'remote_compare' attribute
-                        instead of 'compare'.
 
 Listing Settings:
   --no-header           Disable headers where applicable
@@ -372,7 +394,7 @@ Listing Settings:
 ```text
 usage: dfb snapshot [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
                     [--after TIMESTAMP] [--only TIMESTAMP] --config file
-                    [-o 'OPTION = VALUE'] [--refresh] [-d] [--output OUTPUT]
+                    [-o 'OPTION = VALUE'] [-d] [--output OUTPUT]
                     [path]
 
 positional arguments:
@@ -428,12 +450,6 @@ Config & Cache Settings:
                         file. These can be used with conditionals to control
                         overrides. See readme for details.Can specify multiple times.
                         There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote
-                        destination. This can be much slower as it must list all
-                        versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb snapshot (e.g., manual
-                        pruning). When used, will use 'remote_compare' attribute
-                        instead of 'compare'.
 
 ```
 
@@ -442,8 +458,8 @@ Config & Cache Settings:
 
 ```text
 usage: dfb versions [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
-                    [-o 'OPTION = VALUE'] [--refresh] [--no-header] [--human]
-                    [--timestamp-local] [--ref-count] [--real-path]
+                    [-o 'OPTION = VALUE'] [--no-header] [--human] [--timestamp-local]
+                    [--ref-count] [--real-path]
                     filepath
 
 positional arguments:
@@ -478,12 +494,6 @@ Config & Cache Settings:
                         file. These can be used with conditionals to control
                         overrides. See readme for details.Can specify multiple times.
                         There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote
-                        destination. This can be much slower as it must list all
-                        versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb versions (e.g., manual
-                        pruning). When used, will use 'remote_compare' attribute
-                        instead of 'compare'.
 
 Listing Settings:
   --no-header           Disable headers where applicable
@@ -502,8 +512,8 @@ for a reference file
 
 ```text
 usage: dfb prune [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
-                 [-o 'OPTION = VALUE'] [--refresh] [-n] [-i]
-                 [--shell-script DEST or -] [-N N] [--subdir dir]
+                 [-o 'OPTION = VALUE'] [-n] [-i] [--shell-script DEST or -] [-N N]
+                 [--subdir dir]
                  when
 
 positional arguments:
@@ -558,12 +568,6 @@ Config & Cache Settings:
                         file. These can be used with conditionals to control
                         overrides. See readme for details.Can specify multiple times.
                         There is no input validation of any sort.
-  --refresh             Refresh the local cache with a real listing of the remote
-                        destination. This can be much slower as it must list all
-                        versions of all files however, it is useful if something has
-                        changed at the remote outside of dfb prune (e.g., manual
-                        pruning). When used, will use 'remote_compare' attribute
-                        instead of 'compare'.
 
 Execution Settings:
   Precedance follows the order specified in this help

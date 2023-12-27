@@ -2,6 +2,11 @@
 
 (newest on top)
 
+## 20231227.0
+
+- `refresh` is now its own command and has been removed from all other commands except for `backup`
+- Added better help for setting up attributes to readme
+
 ## 20230705.0
 
 - Do not write debug to file except in testing. This was a leftover artifact that mostly didn't matter except when pruning a large backup, it was writing a line for 2-3x the number of files. 

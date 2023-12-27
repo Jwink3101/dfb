@@ -2,8 +2,6 @@ import datetime
 import string
 import re
 
-from . import debug, log
-
 _r = repr
 
 
@@ -51,10 +49,6 @@ def timedelta_parser(deltastr):
         if val:
             delta[key] = float(val.group(1))
     if delta:
-        try:  # not worth failing over
-            debug(f"Processed {_r(deltastr0)} to {delta}")
-        except:
-            pass
         return datetime.timedelta(**delta)
     else:
         return

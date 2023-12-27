@@ -14,6 +14,7 @@ os.chdir(os.path.dirname(__file__))
 commands = """\
 init
 backup
+refresh
 restore-dir
 restore-file
 ls
