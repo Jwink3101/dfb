@@ -1,15 +1,10 @@
+***
+
+*Warning*: This tool is still in beta but (a) I've been using it heavily for 9 months without problems, (b) the design is such that even without it, you can get all of your files back, and (c) more testers are good! Use at your own risk but please also provide feedback
+
+***
+
 # dfb - Dated File Backup
-
----
-
-# WARNING: Public Beta
-
-This is a ** public beta**. But, as discussed below, you don't need dfb to restore so the risk of usage is not too bad.
-
-Please provide feedback!
-
----
----
 
 Full-file, append-only, backups that can be easily restored to any point in time. Can back up from and send to *any** [rclone](https://rclone.org/) remote.
 
@@ -20,7 +15,7 @@ Like its cousin, [rirb][rirb], dfb is not the most efficient, advanced, fast, fe
 Design Tenets:
 
 - **Easy to understand, interrogate, and restore**. The backup format is easily comprehended and can be reverse engineered without any real technical knowledge. No special tools are needed to restore in theory (except if using crypt, you need to decrypt it). The format is about as straightforward as possible
-- **Backup full copies of all files**. Related to the above, all files are full copies that can be downloaded right away. This is *less efficient* but that comes with the advantages noted above
+- **Backup full copies of all files**. Related to the above, all files are full copies that can be downloaded right away. This is *less efficient* but that comes with the advantages noted above. Only exception is references for moved files which are easy to understand and use.
 - **Restore to any point in time**. Can easily rollback to any point-in-time without any scripting or interrogating logs. (Assuming it has not been pruned)
     - **Continuous in time is better than snapshots**. So many tools work off of snapshots. This does enable pruning like "keep 1 snapshot per week" but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point-in-time continuously *and* look at all versions of a specific file. Pruning capabilities let you specify a cut-off time and/or a number of versions to keep
 - **Support append-only/immutable storage natively**. There is never a need to delete files except for pruning. Nothing ever gets renamed, deleted, or modified.
@@ -46,6 +41,19 @@ When files are backed up, they are renamed to have the date of the backup in the
 where the time is *always in UTC (Z) time*. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is a tiny file with `D` and if a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
 
 Directory names are unchanged.
+
+### References
+
+The only exception to full-files is references. References write JSON data like[^refv1]:
+
+```json
+{"ver": 2, "rel": "<RELATIVE path to referenced file>"}
+```
+
+[^refv1]: Older versions were just a single line with the absolute path to the reference. This implied version 1 was less flexible and made for some other issues.
+
+Note that references *are* considered and guarded when pruning (with associated tests). Be careful when pruning manually!
+
 
 ## Install
 
@@ -228,7 +236,7 @@ For example, if you want to delete `my/large/file.ext`, you can do:
 
     $ dfb versions my/large/file.ext --real-path --ref-count
     
-You will see a table of all versions of the file. Note that `--ref-count` is included since if you delete a referent (`Ref. Count > 1`), it will make the referrer appear deleted (that may be the intended outcome!). 
+You will see a table of all versions of the file. Note that `--ref-count` is included since if you delete a referent (`Ref. Count > 1`), it will make the referrer appear deleted (that may be the intended outcome!). **Be careful about references**!
 
 Simply identify the versions you wish to delete, copy the Real Path, and run
 
@@ -236,7 +244,7 @@ Simply identify the versions you wish to delete, copy the Real Path, and run
 
 Afterwards, you should refresh the file listings. Most calls can have a `--refresh` but a simple one is just
 
-    $ dfb ls --refresh
+    $ dfb refresh
 
 ## Mount (EXPERIMENTAL)
 
