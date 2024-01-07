@@ -258,6 +258,12 @@ Some notes:
 - Logging is incomplete. I still need to fix this
 - Does not resolve symlink files.
 - Just to repeat, **THIS IS EXPERIMENTAL**. 
+- Does **not work with libfuse3**. Use libfuse2:
+    ```
+    $ sudo apt-get update -y
+    $ sudo apt-get install -y libfuse2
+    ```
+
 
 ## "FAQs"
 

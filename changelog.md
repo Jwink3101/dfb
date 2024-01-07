@@ -2,6 +2,16 @@
 
 (newest on top)
 
+## 20240106.0
+
+- Added documentation that dfb-mount needs libfuse2 and will not work on libfuse3.
+    ```
+    $ sudo apt-get update -y
+    $ sudo apt-get install -y libfuse2
+    ```
+- Added tool called `dfb-link` that will symlink the correct files. This can be used instead of dfb-mount if you do not want to use FUSE.
+- Minor code changes to accommodate using the timestamp tool outside of dfb.
+
 ## 20231227.0
 
 - `refresh` is now its own command and has been removed from all other commands except for `backup`

@@ -716,6 +716,8 @@ def rpath2apath(rpath):
     to apath ('sub/dir/file.txt').
 
     Does not work for reference links
+
+    Returns apath, timestamp, flag
     """
     parent, name = os.path.split(rpath)
     dot = ""

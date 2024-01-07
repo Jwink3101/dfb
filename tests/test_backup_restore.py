@@ -1172,7 +1172,7 @@ def test_metadata(metadata):
 
 
 if __name__ == "__main__":
-    #     test_main("reference")
+    test_main("reference")
     #     test_main("copy")
     #     test_shell()
     #     test_log_upload(True)

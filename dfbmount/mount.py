@@ -298,7 +298,8 @@ to the top level.
 """
 
 description = """\
-dfb FUSE thin-wrapper mount. Must FIRST mount the destination with rclone
+dfb FUSE thin-wrapper mount. Must FIRST mount the destination with rclone. Does **not**
+work with libfuse3. Must use libfuse2 on Linux
 """
 
 
@@ -321,6 +322,7 @@ def cli(argv=None):
         help=f"Specify a timestamp. {ISODATEHELP}",
         dest="ts",
     )
+    ## TODO: --after flag
     parser.add_argument(
         "--remove-empty-dirs",
         action="store_true",

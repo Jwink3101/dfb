@@ -4,7 +4,7 @@ from .configuration import log, debug, LOCK
 from .utils import time2all
 from .timestamps import timestamp_parser
 
-__version__ = "20231227.0"
+__version__ = "20240106.0"
 MIN_RCLONE = 1, 63, 0
 
 
@@ -35,6 +35,17 @@ def nowfun():
 
     return time2all(now)
 
+
+def nowfun_obj():
+    return nowfun().obj
+
+
+# Monkey patch this into timestamps. We do this so that timestamps *can* exists 100%
+# without dfb (such as if I ever want to copy/paste the code) but for dfb, we want this
+# version of nowfun since it can be overridden for testing
+from . import timestamps
+
+timestamps.nowfun = nowfun
 
 # For testing only. I can add fail points
 _FAIL = set()

@@ -35,6 +35,8 @@ except:
     git = None
 
 try:
+    # Hack to replace the version. Make a copy, replace the text, then move the copy
+    # back again.
     shutil.move("dfb/__init__.py", "_tmp.py")
     with open("_tmp.py") as fp:
         init = fp.read()
@@ -44,7 +46,7 @@ try:
 
     setup(
         name="dfb",
-        packages=["dfb", "dfbmount"],
+        packages=["dfb", "dfbmount", "dfblink"],
         long_description=open("readme.md").read(),
         install_requires=["requests"],
         entry_points={
@@ -52,6 +54,7 @@ try:
                 "dfb=dfb.cli:cli",
                 "dfbshebanged=dfb.cli:clishebang",
                 "dfb-mount=dfbmount.mount:cli",
+                "dfb-link=dfblink.cli:cli",
             ],
         },
         version=dfb.__version__,  # Do not include git as per PEP440

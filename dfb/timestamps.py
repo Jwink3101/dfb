@@ -5,6 +5,12 @@ import re
 _r = repr
 
 
+# This will get monkey-patched later when used in dfb but it is done like this so that
+# this module code can be copied to other projects w/o this being affected
+def nowfun():
+    return datetime.datetime.now().astimezone(datetime.timezone.utc)
+
+
 def timestamp_parser(timestamp, aware=False, utc=False, epoch=False, now=None):
     """
     Will either accept iso8601 and pass aware,utc, and epoc
@@ -12,13 +18,31 @@ def timestamp_parser(timestamp, aware=False, utc=False, epoch=False, now=None):
         ["seconds","minutes","hours","days","weeks"]
     and be a differences from "now" if specified else will use current time
 
+    Inputs:
+    -------
+    timestamp
+        Timestamp to parse. See above for requirements
+
+    aware [False] {True, False, 'utc'}
+        If True, will assume timestamps without specified timezones are in
+        LOCAL time. If set to 'utc', will assume the unsepcified time zone IS utc time.
+
+        If a timezone is in the timestamp, this will have no effect
+
+    utc [False]
+        Convert all responses to UTC time regardless of specified times. If the
+        timestamp doesn't have a timezone, it assumed local unless `aware = 'utc'`
+
+    epoch [False]
+         Return epoch time instead of a datetime object
+
+    now [None]:
+        Set a current time. Defaults to the *actual* current time
+
     """
     delta = timedelta_parser(timestamp)
     if delta:
-        if not now:
-            from . import nowfun
-
-            now = nowfun().obj
+        now = now or nowfun()
         timestamp = timestamp_parser(now, aware=aware, utc=utc) - delta
 
     return iso8601_parser(timestamp, aware=aware, utc=utc, epoch=epoch)
@@ -61,7 +85,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     precision. While it will accept nanosecond precision, it will not capture beyond
     microseconds due to Python's limitations.
 
-    Alternatively, if timestamp is an integer or "i<integer>" or "u<integer>", it will
+    Alternatively, if timestamp is numeric or "i<num>" or "u<num>", it will
     be considered the UNIX Epoch time.
 
     Only accepts time zone offsets, not names. Years MUST be four digits. Can also accept
@@ -73,7 +97,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     timestamp
         Timestamp to parse. See above for requirements
 
-    aware [False]
+    aware [False] {True, False, 'utc'}
         If True, will assume timestamps without specified timezones are in
         LOCAL time. If set to 'utc', will assume the unsepcified time zone IS utc time.
 
@@ -110,7 +134,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
         # https://docs.python.org/3/library/datetime.html#determining-if-an-object-is-aware-or-naive
         isaware = dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
         if (aware or utc) and not isaware:
-            if aware == "utc":
+            if isinstance(aware, str) and aware.lower() == "utc":
                 dt = dt.replace(tzinfo=datetime.timezone.utc)
             else:  # local
                 # I am not sure why .astimezone() isn't working as one would expect with
