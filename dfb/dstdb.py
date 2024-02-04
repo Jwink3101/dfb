@@ -183,7 +183,7 @@ class DFBDST:
         for file in files:
             try:
                 apath, ts, flag = rpath2apath(file["Path"])
-            except (ValueError, NoTimestampInNameError):
+            except (ValueError, NoTimestampInNameError, IndexError):
                 logger.error(f"Could not find timestamp for {file['Path']}. Ignoring")
                 continue
             c += 1
