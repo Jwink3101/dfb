@@ -749,12 +749,16 @@ def _cli(cliconfig):
         if cliconfig.command == "backup":
             from .backup import Backup
 
+            config._set_auto()
+
             back = Backup(config)  # Two steps so the object is initialized even
             back.run()  # ... if it fails
             return back
 
         elif cliconfig.command == "refresh":
             from .dstdb import DFBDST
+
+            config._set_auto()
 
             DFBDST(config).reset(use_snapshots=cliconfig.use_snapshots)
             return config

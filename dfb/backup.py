@@ -57,8 +57,6 @@ class Backup:
         config = self.config
         cliconfig = config.cliconfig
 
-        config._set_auto()
-
         self.call_shell(mode="pre")
 
         self.src_rclone = config._config["src_rclone"]
