@@ -11,15 +11,15 @@ p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
-from dfb import rcloneapi
-from dfb.rcloneapi import Rclone
+from dfb import rclonecli
+from dfb.rclonecli import RcloneCLI
 
-# assert os.path.relpath(rcloneapi.__file__, ".") == "rclone.py"  # Must be local!
+# assert os.path.relpath(rclonecli.__file__, ".") == "rclone.py"  # Must be local!
 
 
 def rmdir(path):
     try:
-        shutil.rmtree("testdirs/fasdf")
+        shutil.rmtree(path)
     except OSError:
         pass
 
@@ -45,10 +45,10 @@ def test_main():
     # if True:
     rmdir("testdirs/main")
     cfg = write_config("main")
-    rclone = Rclone(
+    rclone = RcloneCLI(
         "myremote:",
         universal_flags=["--config", cfg],
-        universal_env={"RCLONE_PASSWORD_COMMAND": Rclone.DELENV},
+        universal_env={"RCLONE_PASSWORD_COMMAND": RcloneCLI.DELENV},
     )
 
     #####################
@@ -169,10 +169,10 @@ def test_main():
 def test_fobj():
     rmdir("testdirs/fobj")
     cfg = write_config("fobj")
-    rclone = Rclone(
+    rclone = RcloneCLI(
         "myremote:",
         universal_flags=["--config", cfg],
-        universal_env={"RCLONE_PASSWORD_COMMAND": Rclone.DELENV},
+        universal_env={"RCLONE_PASSWORD_COMMAND": RcloneCLI.DELENV},
     )
 
     rclone.write((os.urandom(1024 * 1024) for _ in range(10)), "random.bin")
@@ -226,10 +226,10 @@ def test_fobj():
 def test_streamed_output():
     rmdir("testdirs/streamout")
     cfg = write_config("streamout")
-    rclone = Rclone(
+    rclone = RcloneCLI(
         "myremote:",
         universal_flags=["--config", cfg],
-        universal_env={"RCLONE_PASSWORD_COMMAND": Rclone.DELENV},
+        universal_env={"RCLONE_PASSWORD_COMMAND": RcloneCLI.DELENV},
     )
     lines = rclone.write(
         os.urandom(10),
@@ -251,11 +251,11 @@ def test_streamed_output():
 def test_context_managers():
     rmdir("testdirs/context")
     cfg = write_config("context")
-    rclone = Rclone(
+    rclone = RcloneCLI(
         "myremote:",
         universal_flags=["--config", cfg],
         universal_env={
-            "RCLONE_PASSWORD_COMMAND": Rclone.DELENV,
+            "RCLONE_PASSWORD_COMMAND": RcloneCLI.DELENV,
             "TEST_ENV": "Testi ng",
         },
     )
@@ -349,10 +349,10 @@ def test_context_managers():
         assert "stdin specified and not bytes" in shell
 
     # Repeat the above with `ignore_times`
-    rclone = Rclone(
+    rclone = RcloneCLI(
         "myremote:",
         universal_flags=["--config", cfg],
-        universal_env={"RCLONE_PASSWORD_COMMAND": Rclone.DELENV},
+        universal_env={"RCLONE_PASSWORD_COMMAND": RcloneCLI.DELENV},
         no_check_dest=False,
     )
     rclone.delete("tmpfile.txt")

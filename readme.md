@@ -4,27 +4,29 @@
 
 ***
 
+
 # dfb - Dated File Backup
 
-Full-file, append-only, backups that can be easily restored to any point in time. Can back up from and send to *any** [rclone](https://rclone.org/) remote.
+The dfb backup tool utilizes rclone to create full-file, append-only backups that allow easy restoration to any point in time. Files are uploaded with dates appended to their names and deletes are noted with a delete marker. The design focuses on simplicity, easy understanding, and restoration without special tools. It prioritizes full-file backups stored natively on the remote, continuous rollback capability, straightforward backups and restores, and support for append-only storage. To accomplish this, it sacrifices some efficiency and advanced features. It may not be the the most efficient, advanced, fast, featurefull, sexy, or sophisticated backup tool these are great tradeoffs for peace-of-mind with backups! 
 
-**The premise**: When a file is uploaded, the date is appended to the name. This allows you to see the state of the backup by only considering times <= a time of interest. Deleted files are represented with a delete marker. Optionally, moves can be tracked with references.
-
-Like its cousin, [rirb][rirb], dfb is not the most efficient, advanced, fast, featurefull,  sexy, or sophisticated. However, this approach is **simple, easy to use, and easy to understand**. No special tools are needed to restore and full copies of the files are stored as opposed to in chunks (which has pros and cons). For backups, I think these are great tradeoffs. And, for what it's worth, popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap], and rsync with `--link-dest` ([example][rs]) have the same or even *worse* tradeoffs. They are full-file and don't even track moves. 
+Many other popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap], and rsync with `--link-dest` ([example][rs]) have the same (or even *worse*) tradeoffs and don't support cloud storage. Block-based backup tools like [restic][restic], [kopia][kopia], [borg][borg], and [Duplicacy][dup] offer increased efficiency and deduplication but are more prone to errors, more complicated, and require the tool to view and restore.
 
 Design Tenets:
 
-- **Easy to understand, interrogate, and restore**. The backup format is easily comprehended and can be reverse engineered without any real technical knowledge. No special tools are needed to restore in theory (except if using crypt, you need to decrypt it). The format is about as straightforward as possible
-- **Backup full copies of all files**. Related to the above, all files are full copies that can be downloaded right away. This is *less efficient* but that comes with the advantages noted above. Only exception is references for moved files which are easy to understand and use.
-- **Restore to any point in time**. Can easily rollback to any point-in-time without any scripting or interrogating logs. (Assuming it has not been pruned)
-    - **Continuous in time is better than snapshots**. So many tools work off of snapshots. This does enable pruning like "keep 1 snapshot per week" but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point-in-time continuously *and* look at all versions of a specific file. Pruning capabilities let you specify a cut-off time and/or a number of versions to keep
+- **Easy to understand, interrogate, and restore**. The backup format is easily comprehended and can be reverse engineered simply. No special tools are needed to restore in theory (except if using crypt, you need to decrypt it). The format is about as straightforward as possible
+- **Backup full copies of all files**. All files are full copies stored natively and can be downloaded right away, with or without special tools. This is *less efficient* than block-based tools, but that comes with the advantages noted above. Only exception is references for moved files which are easy to understand and use.
+- **Restore to any point in time**. Can easily rollback to any point-in-time (unless pruned)
+    - **Continuous in time is better than snapshots**. Many tools work off of synthetic snapshots. This does enable pruning like "keep 1 snapshot per week" but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point-in-time continuously *and* look at all versions of a specific file (with or without the tool itself to faciliate). Pruning capabilities let you specify a time and/or a number of versions to keep. 
 - **Support append-only/immutable storage natively**. There is never a need to delete files except for pruning. Nothing ever gets renamed, deleted, or modified.
-
 
 
 [tm]:https://support.apple.com/en-us/HT201250
 [rsnap]:https://rsnapshot.org/
 [rs]:https://web.archive.org/web/20230830063440/https://digitalis.io/blog/linux/incremental-backups-with-rsync-and-hard-links/
+[restic]:https://restic.net/
+[kopia]:https://kopia.io/
+[borg]:https://www.borgbackup.org/
+[dup]:https://duplicacy.com/
 
 [rirb]:https://github.com/Jwink3101/rirb
 
@@ -38,7 +40,7 @@ When files are backed up, they are renamed to have the date of the backup in the
 
     <filename>.YYYYMMDDhhssmm<optional R or D>.ext
 
-where the time is *always in UTC (Z) time*. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is a tiny file with `D` and if a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
+where the time is ***always in UTC (Z) time**. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is a tiny file with `D` and if a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
 
 Directory names are unchanged.
 
@@ -54,7 +56,6 @@ The only exception to full-files is references. References write JSON data like[
 
 Note that references *are* considered and guarded when pruning (with associated tests). Be careful when pruning manually!
 
-
 ## Install
 
 Just install from github directly.
@@ -69,9 +70,9 @@ To start, run:
 
 The config file is **heavily and extensively documented**. It is read on Python without any sandboxing so make sure it is trusted. Some variables are defined inline including `os` and a few modules. The variables `__file__` and `__dir__` are `pathlib.Path` objects for the config file and the directory of the config file respectively. These can be used to specify paths to things like files for `--filter-from`.
 
-The config file is heavily documented. The most important thing is setting the attributes. Unlike rclone, these are not done to defaults for each remote. For example, you shouldn't use `mtime` on WebDAV since it's not well supported (except on certain ones).
+For the most part, only the `src` and `dst` need to be set. Maybe `filter_flags`. The rest can be ignored or explored if interested
 
-Most comparisons are past-source-to-past-source but occasionally, such as after a `--refresh`, they are source-to-destination. In that case, it is possible to set different values.
+## Simple Usage
 
 Assuming this is a new setup, just run it:
 
@@ -86,111 +87,6 @@ Or, directly execute the config file (it has a custom shebang):
     ./config.py ls
     # ...
 
-## Local Database
-
-A local sqlite3 database is kept that serves to greatly speed up interaction. The database is used for listing the remote either in the CLI or for use in backups. It is updated as real-time as is possible with uploads so even interrupted or failed backups should be correct (or, if not, it may re-backup but not lose anything).
-
-However, if the remote is modified manually, the database should be refreshed. Or if you wish to interact with the backup on another machine, it should either be refreshed or copied.
-
-Note that, depending on the configuration, not all data may be in the database. For example, if not using `mtime` for `dst_compare`, it won't be fetched. That may still be there for restore.
-
-The database is stored in:
-
-    <rclone cache dir>/DFB/<_uuid from config>.db
-
-Where "`rclone cache dir`" is found from: `$ rclone config paths`
-
-### Comparison and Rename Attributes
-
-The attributes for comparison and for renames are user settable. If both remotes support hashes, it almost always best to use them. And if the source is slow to list ModTime, you can also set `get_modtime = False`. If remotes support ModTime and it is fast, that is a decent choice for both compare and renames.
-
-Generally speaking, comparisons and renames are actually source-to-source because the source values are saved. However, if run with `--refresh`, then comparisons and move-tracking are source-to-dest. In that case, you can set `dst_compare` and `dst_renames`. 
-
-<table>
-    <tr>
-        <th>Source</th>
-        <th>Destination</th>
-        <th><code>compare</code></th>
-        <th><code>dst_compare</code></th>
-        <th><code>renames</code></th>
-        <th><code>dst_renames</code></th>
-        <th>Comment</th>
-    </tr>
-    <tr>
-        <td>Local</td>
-        <td>
-            Any remote that supports ModTime including 
-            local, B2, OneDrive, DropBox, [Google] Drive,
-            [S]FTP, <strong>certain</strong> WebDAV. <strong>NOT</strong> S3.
-        </td>
-        <td>'mtime'</td>
-        <td>None</td>
-        <td>'mtime'</td>
-        <td>None</td>
-        <td>Use 'mtime' since it easy and fairly reliable</td>
-    </tr>
-        <td>Local</td>
-        <td>
-            S3, <em>Regular</em> WebDAV
-        </td>
-        <td>'mtime'</td>
-        <td>'size'</td>
-        <td>'mtime'</td>
-        <td>False</td>
-        <td>
-            Use 'mtime' when using past source data but switch to size
-            when using <code>dst_</code> since mtime is either super slow
-            (S3) or unreliable (WebDAV). Since 'size' is a poor file tracker,
-            disable renames in that case.
-        </td>
-    </tr>
-    <tr>
-        <td colspan="2">
-            <strong>Identical</strong> cloud-to-cloud that support fast hashing (i.e. not SFTP). Or if the same hash is supported (e.g. S3 to Azure)
-        </td>
-        <td>'hash'</td>
-        <td>None</td>
-        <td>'hash'</td>
-        <td>None</td>
-        <td>Use 'hash' since it is fast and reliable</td>
-    </tr>
-    <tr>
-        <td colspan="2">
-            <strong>Different</strong> cloud-to-cloud that support fast hashing (i.e. not SFTP)
-        </td>
-        <td>'hash'</td>
-        <td>'size'</td>
-        <td>'hash'</td>
-        <td>None</td>
-        <td>
-            Won't have hashes on both. Can change 'size' to 'mtime' if both 
-            support it and one is not S3 (where 'mtime' is slow)
-        </td>
-    </tr>
-    <tr>
-        <td>Cloud that supports fast hashing</td>
-        <td>Local or SFTP</td>
-        <td>'hash'</td>
-        <td>'size'</td>
-        <td>'hash'</td>
-        <td>None</td>
-        <td>
-            Can change 'size' to 'mtime' if  
-            not S3 (where 'mtime' is slow)
-        </td>
-    </tr>
-    <tr>
-        <td>regular WebDAV, Mega, Seafile, any other non-mod-time remote</td>
-        <td>Anything</td>
-        <td>'size'</td>
-        <td>None</td>
-        <td>False</td>
-        <td>False</td>
-        <td>
-            Only use size to detect changed files. Good enough most of the time but unreliable for move detection
-        </td>
-    </tr>
-</table>
 
 ### Override
 
@@ -200,37 +96,41 @@ The config file can be overridden at the command line by specifying code to eval
         if post:
             filter_flags.extend(('--filter','- *.new'))"
 
-## Symlinks
 
-For local sources, you can configure how to handle links. Due to an [rclone bug #6855](https://github.com/rclone/rclone/issues/6855), dfb handles symlinks on its own for backups. This works for both the regular and `--shell-script` modes. However, dfb *does not support restore of symlinks*. After restore, there will be `.rclonelink` files that used to be symlinks. These can be manually (or simply Python script) fixed later:
+## Local Database
 
-```python
-from pathlib import Path
+A local sqlite3 database is kept that serves to greatly speed up interaction. The database is used for listing the remote either in the CLI or for use in backups. It is updated as real-time as is possible with uploads so even interrupted or failed backups should be correct (or, if not, it may re-backup but not lose anything).
 
-RESTORE_DIR = "."
+However, if the remote is modified manually, the database should be refreshed. Or if you wish to interact with the backup on another machine, it should either be refreshed or copied.
 
-links = Path(RESTORE_DIR).rglob("*.rclonelink")
-for link in links:
-    dst = str(link).removesuffix(".rclonelink")
-    src = link.read_text()
-    Path(dst).symlink_to(src)
-    # link.unlink()  # OPTIONAL
-```
+Note that, depending on the configuration, not all data may be in the database. For example, if not using `mtime` for `dst_compare`, it won't be fetched. That will still be there for restore if the remote supports it.
 
-Note that this will fail if for some reason there are files called `.rclonelink` that aren't intended to be links
+The database is stored in:
+
+    <rclone cache dir>/DFB/<_uuid from config>.db
+
+Where "`rclone cache dir`" is found from: `$ rclone config paths`. See also [Advanced Settings](docs/adv_settings.md).
+
+When refreshing the database, dfb will also optionally read the logs of all uploaded files to fill in source-specific metadata and hashes. These are *secondary* to the operation of dfb and the native remote storage is sufficient to restore (with its own limitations).
 
 ## Pruning
 
-You can prune dfb by removing *unneeded* files at snapshots older than a set time. At it's most basic form, the pruning algorithm is simply to delete all files older than the specified time *except* the last one. This is demonstrated below.
+You can prune dfb by removing *unneeded* files at snapshots older than a set time. It will keep files older than the specified time if they are still the most recent or are referenced. It can also be told to keep a certain number of versions of specific files.
 
-    (A) --- (B) --- (C) -|- (D) --- (E) --- (F)
-                       prune
+This pruning strategy is discting from snapshot-based backups where you keep a certain number of snapshots, but offers a more practical approach as it doesn't risk losing important data bewtween snapshots and makes it very easy to understand changes.
 
-In this simple example, pruning at the noted spot will delete `(A)` and `(B)` but *not* `(C)`. However, references from moving files adds some complexity to this and dfb is designed to handle it.
+Pruning is as simple as shown in some examples:
 
-### Pruning individual files (manually)
+    $ dfb prune "365 days"
+    $ dfb prune 2023-08-11
+    $ dfb prune 2022-10-14 --keep-versions 10  # keeps 10 *additional* before the date
+    $ dfb prune now --keep-versions 20         # just keep the last 20
 
-There is no way inside of dfb to prune individual files but part of the design of the tool enables you to manually delete any version you wish of a file. These manual operations are fully supported and enable more control. There is no need to "rewrite" history.
+Files *older* than the specified time or verion number may still exist if they are the latest or are referenced.
+
+### Pruning individual files (Advanced)
+
+Pruning individual files is supported through the `advanced` sub command. You need to know the "real-path" or "rpath" of the file. Assume `$DFB_CONFIG_FILE` is set for these examples.
 
 For example, if you want to delete `my/large/file.ext`, you can do:
 
@@ -240,11 +140,24 @@ You will see a table of all versions of the file. Note that `--ref-count` is inc
 
 Simply identify the versions you wish to delete, copy the Real Path, and run
 
-    $ rclone delete myremote:my/large/file.<timestamp>.ext
+    $ dfb advanced prune-file my/large/file.<timestamp>.ext
 
-Afterwards, you should refresh the file listings. Most calls can have a `--refresh` but a simple one is just
+You can, of course, do it all manually but (a) it won't check/delete references and (b) it won't refresh the database. To refresh after manual pruning, either call `refresh` or use the `advanced dbimport` command. See [notes on formats](docs/adv_backup_dump_format.md) for details.
 
-    $ dfb refresh
+## Additional Docs
+
+<!--- BEGIN AUTO GENERATED -->
+<!--- Auto Generated -->
+<!--- DO NOT MODIFY. WILL NOT BE SAVED -->
+- [(ADVANCED) Reading Backup and Prune `--dump` files](docs/adv_backup_dump_format.md)
+- [Advanced (hidden) settings](docs/adv_settings.md)
+- [Changelog](docs/changelog.md)
+- [CLI Help](docs/CLI_help.md)
+- [Using dfb with cold storage](docs/cold_storage.md)
+- [Compare Setting Guidance](docs/compare_settings.md)
+- ["FAQs"](docs/FAQs.md)
+- [Symlink Restore](docs/symlink_restore.md)
+<!--- END AUTO GENERATED -->
 
 ## Mount (EXPERIMENTAL)
 
@@ -264,92 +177,12 @@ Some notes:
     $ sudo apt-get install -y libfuse2
     ```
 
-
-## "FAQs"
-
-(well, nobody is asking but you know what I mean...)
-
-### What are the pros and cons of dated files vs full synthetic snapshots.
-
-Synthetic snapshots, whether from chunk database tools like restic, Kopia, Borg, Duplicacy, etc or via hardlinks like Time Machine and rsync with `--link-dest`, are fundamentally different. They either keep a database of files and blocks or a full, hard-linked, directory structure.
-
-This allows for pruning strategies like "keep one per week" but (a) it is risky to assume the one version of the file you care about is the one you keep, and (b) makes it fundamentally hard to delete specific files (though it *is* possible). dfb on the other hand keeps every version of every file when modified up to the pruned cutoff. But because there is no singular snapshot, you can delete at will. Upload a large file by accident? Delete it on the dest and run with `--refresh` next time. That's it!
-
-Other advantages of this approach are:
-
-- You can also backup individual directories more often since you are just adding file versions. Synthetic snapshot tools may deduplicate the data but keeps it as its own backup series
-- You can very easily and *natively* see all version of a file. With synthetic backups, it can be done but is harder (depending on the approach).
-    - dfb provides a UI for this but it can also be done manually
-- Compared to the database tools, it is super easy to restore without the tool itself used to backup. Simple scripting will identify the needed transfers.
-
-### How is this better than native versioning on some remotes
-
-Remotes like OneDrive and consumer storage that offer versioning usually only do it via the website and requires you manually restore for each file. Miserable experience though it'll do in a pinch.
-
-However, some remotes for rclone, like B2 and S3, offer native versions with built in flags in rclone that let you do things like dfb. Are they better? Maybe. They are different and to each their own. Personally, I like to *own* my backup process and not rely on the backend storage. I also like the freedom to move storage if I need, both capability and backup migration.
-
-But the real answer is to use both! When you prune (or get hacked/randomwared), you have another backup!
-
-### Why only keep 1 second precision?
-
-Simple answer: Tradeoff of compactness and precision. Long filenames can be tough on some remotes and, in reality, there isn't much of a use case for < 1s level of precision.
-
-As an aside, I considered other options. I considered adding Z to the timestamp to be explicit on timezone but decided it wasn't worth it. I tried shortening it by using unix time which is nice but hard to parse. I even tried encoding the filenames with letters but
-that makes it even *harder* to human parse. It is not recommended but in practice any ISO8601 formatted date, with and without timezones, will be parsed (with omitted timezones assumed UTC).
-
-### Why not use the date in the root folder?
-
-Rather than `path/to/file.<date>.ext`, dfb could have done `<date>path/to/file.ext`. I strongly considered that and it would have made some things easier but the problem is that (a) interrogating the backup manually would have been *much* harder and walking the file system could have been much more expensive!
-
-### Don't you end up with a lot of files in a directory?
-
-Yep. Certainly possible and that is a tradeoff. One way to deal with it is to split is manually and use [rclone union](https://rclone.org/union/) to join them. While some remotes get uncomfortable with too many files, rclone can handle it just fine.
-
-### What happens if a transfer is interrupted.
-
-**Short answer:** Run it again and it'll be fine! You will lose the progress of active transfers but they will be fixed and it'll keep going.
-
-Long answer: Incomplete versions may show up but will, by definition, a new version will be uploaded next time. It is also possible if an interruption is in the very short time between upload and saving in the database, that a complete version will be there and you upload again.
-
-Note, *unlike* [rirb][rirb], there is *no need to refresh next time* because the files themselves define the state and the local cache is updated per-file.
-
-### What are the known issues and what is on the roadmap
-
-**Known Issues**:
+## Known Issues
 
 - Logging in `dfb-mount` is not complete nor does it make much sense at the moment.
 - Restore:
     - It is possible to create edge cases with symlink handling by having non-symlinks on the source names `<name>.rclonelink`. This is still mostly handled but can cause issues with some sources
     - Restore of symlinks is manual. See above for a Python snippet to rebuild links.
-- (work in progress) Metadata isn't preserved on B2 but works via the S3 API
+- Even with logs of files using source data, restore *always* directly uses the remote. Future versions may offer a secondary method to restore that information for certain remotes.
 
-**Roadmap**:
-
-In no real particular order...
-
-- Web-server, WebDAV server, and/or ~~FUSE~~ (DONE) for backup. Potentially one that is just a loop-back to an rclone mount (letting rclone handle the details)
-    - Alternative: symlink creation mode to an rclone mount
-    - Mount TODO
-        - [ ] Logging
-            - [ ] FUSE code
-            - [ ] Mount Code
-- [uncertain] Move file listing to the `rc` interface. Nearly everything else is rc-based for efficiency but file listing isn't. The code is there but it would require different exclusions to be set, it will be harder for the user, and doesn't really save much. Just one minor authorization call.
-    - There is also a huge sunk-cost in rcloneapi.py. Oh well!
-- Configurable date formats (dfb can actually read many formats but only write one.)
-- Prune a subdir only.
-- Additional documentation of different strategies and uses.
-- Improved sqlite usage
-- Make a copy of the local hash database. Make a way to import or use this. 
-- Windows testing and likely (minor) fixing
-
-### Why does some of the code look weird:
-
-Simple answer: [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-
-I don't love it but it keeps the style consistent. One way to look at a compromise is each side is equally unhappy!
-
-### I pruned older files. Why do I see those timestamps?
-
-Files can stick around after pruning for a few reasons. The most common is that it hasn't been updated after the prune time so it needs to stick around.
-
-Another possible scenario is that a file is moved and the referrer is not pruned. In that case, both the referent and the delete file must stay. The former because it is still needed and the latter so that it doesn't appear undeleted. This does add additional complication but it is considered in the prune logic.
+It is not really an "issue" per se, but one downside of this approach is that deleting a file adds a small file smaller than the block size of the system. And moving a file creates a delete and a new file.

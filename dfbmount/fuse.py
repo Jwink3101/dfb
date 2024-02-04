@@ -888,7 +888,7 @@ class FUSE(object):
 
                 except OSError as e:
                     if e.errno > 0:
-                        log.debug(
+                        log.logger.debug(
                             "FUSE operation %s raised a %s, returning errno %s.",
                             func.__name__,
                             type(e),
@@ -928,9 +928,9 @@ class FUSE(object):
             return -errno.EFAULT
 
     def _decode_optional_path(self, path):
-        # NB: this method is intended for fuse operations that
-        #     allow the path argument to be NULL,
-        #     *not* as a generic path decoding method
+        # Note: this method is intended for fuse operations that
+        #       allow the path argument to be NULL,
+        #       *not* as a generic path decoding method
         if path is None:
             return None
         return path.decode(self.encoding)
@@ -1423,7 +1423,7 @@ class LoggingMixIn:
     log = logging.getLogger("fuse.log-mixin")
 
     def __call__(self, op, path, *args):
-        self.log.debug("-> %s %s %s", op, path, _r(args))
+        self.log.logger.debug("-> %s %s %s", op, path, _r(args))
         ret = "[Unhandled Exception]"
         try:
             ret = getattr(self, op)(path, *args)
@@ -1432,4 +1432,4 @@ class LoggingMixIn:
             ret = str(e)
             raise
         finally:
-            self.log.debug("<- %s %s", op, _r(ret))
+            self.log.logger.debug("<- %s %s", op, _r(ret))

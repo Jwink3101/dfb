@@ -3,92 +3,163 @@ Prune
 """
 import datetime
 import re
+import sys
 import bisect
 import subprocess
 import shlex
+import json
+import logging
+import gzip as gz
 from operator import itemgetter
+
+from . import LOCK
+from .utils import human_readable_bytes, smart_open
+from .timestamps import timestamp_parser
+from .dstdb import DFBDST
+from .rclonerc import rcpathjoin
+from .threadmapper import thread_map_unordered as tmap
 
 _r = repr
 
-from . import log, debug, LOCK
-from .utils import bytes2human, shell_header
-from .timestamps import timestamp_parser
-from .dstdb import DFBDST
-from .rclone import rcpathjoin
-from .threadmapper import thread_map_unordered as tmap
+logger = logging.getLogger(__name__)
 
 
 class Prune:
     def __init__(self, config):
         self.config = config
         self.args = config.cliconfig
+        self.dstdb = PruneableDFBDST(config)
 
-        if config.disable_prune and not self.args.dry_run:
-            log(
-                "Setting --dry-run based on 'disable_prune = True'. "
-                "Run with `--override 'disable_prune = False'` to override"
-            )
+    def bydate(self):
+        config = self.config
+        cliconfig = self.args
+
+        if config.disable_prune and not (self.args.dry_run or cliconfig.dump):
+            logger.info("Setting --dry-run based on 'disable_prune = True' ")
+            logger.info("Run with `--override 'disable_prune = False'` to override")
             self.args.dry_run = True
 
         self.when = when = timestamp_parser(
             self.args.when, epoch=True, now=self.config.now.obj
         )
-        self.dstdb = PruneableDFBDST(config)
 
         msg = f"Pruning to {timestamp_parser(self.when,aware=True).isoformat()} "
         if self.args.N > 0:
             msg += f"and keeping {self.args.N} additional older version{'s' if self.args.N>1 else ''}"
         if self.args.N < 0:
             msg += f"plus removing {-self.args.N} additional newer version{'s' if self.args.N<-1 else ''}"
-        log(msg.strip() + ".")
+        logger.info(msg.strip() + ".")
 
         self.rpaths = self.dstdb.prune_rpaths(
-            self.when, self.args.N, subdir=self.args.subdir
-        )
+            self.when,
+            self.args.N,
+            subdir=self.args.subdir,
+        )  # (rpath,size) pairs
         self.rpaths = sorted(self.rpaths)
         if not self.rpaths:
-            log("Nothing to prune")
+            logger.info("Nothing to prune")
             return
 
+        self.apply()
+
+    def byrpaths(self):
+        config = self.config
+        cliconfig = self.args
+
+        db = self.dstdb.db()
+
+        err = False
+        rpaths = self.rpaths = set()
+        for rpath in cliconfig.rpath:
+            res = db.execute(
+                """
+                SELECT rpath,size,ref_rpath,isref
+                FROM items
+                WHERE 
+                    rpath = ?
+                """,
+                (rpath,),
+            ).fetchall()
+
+            if not res:
+                logger.warning(f"No matches for {_r(rpath)}")
+                continue
+
+            reg, ref = [], []
+            for row in res:
+                {True: ref, False: reg}[bool(row["isref"])].append(row)
+
+            if len(reg) > 1:
+                logger.debug(f"Multiple non-references to {rpath = }")
+
+            msg = f"{_r(rpath)} has {len(res)} entr{'ies' if len(res)>1 else 'y'}. "
+            msg += "{len(reg)} regular and {len(ref)} references"
+            logger.debug(msg)
+
+            for row in reg:
+                rpaths.add((row["rpath"], row["size"]))
+                logger.debug(" delete {_r(row['rpath'])}")
+
+            for row in ref:
+                msg = f"Deleteing {_r(rpath)} will break {_r(row['ref_rpath'])}."
+                if cliconfig.error_if_referenced:
+                    err = True
+                    logger.error(msg + " Will not continue")
+                else:
+                    # Add them. Not really an "rpath" but will have the same effect of
+                    # deleting the file.
+                    rpaths.add((row["ref_rpath"], 0))
+                    logger.debug(" delete {_r(row['ref_rpath'])}")
+        if err:
+            msg = "References will break. Use '--no-error-if-referenced' flag to force."
+            raise BrokenReferenceError(msg)
+
+        self.apply()
+
+    def apply(self):
         self.summary()
+        config = self.config
+        cliconfig = self.args
+
+        rpaths = (r[0] for r in self.rpaths)
+
+        if file := cliconfig.dump:
+            logger.info(f"Dumping jsonl then exiting")
+            try:
+                fp = smart_open(file, "wt") if file != "-" else sys.stdout
+                for rpath in rpaths:
+                    item = {"_V": 1, "_action": "prune", "rpath": rpath}
+                    print(
+                        json.dumps(item, ensure_ascii=False, separators=(",", ":")),
+                        file=fp,
+                        flush=True,
+                    )
+            finally:
+                if file != "-":
+                    fp.close()
+                    logger.info(f"Written to {_r(file)}")
+            return
 
         if self.args.dry_run:
-            log("DRY-RUN. Exit")
+            logger.info("DRY-RUN. Exit")
             return
         elif self.args.interactive:
             r = input("Do you want to continue? [Y]/N:")
             if r.lower().startswith("n"):
                 return
 
-        rpaths = (r[0] for r in self.rpaths)
-
-        if self.args.shell_script:
-            cmd = [config.rclone_exe] + config.rclone_flags + ["delete"]
-            out = [shell_header(config, cd=True)]
-            for rpath in rpaths:
-                out.append(shlex.join(cmd + [rcpathjoin(self.config.dst, rpath)]))
-
-            if self.args.shell_script == "-":
-                log.print("\n".join(out), flush=True)
-            else:
-                with open(self.args.shell_script, "wt") as fp:
-                    fp.write("\n".join(out))
-                log(f"Shell script written to {_r(self.args.shell_script)}")
-            return
-
         self.errcount = 0
 
         rc = self.config.rc
-        rc.start_rc()
+        rc.start()
 
         def _delete(rpath):
             try:
-                log(f"Pruning {_r(rpath)}.")
+                logger.info(f"Pruning {_r(rpath)}.")
                 rc.delete((self.config.dst, rpath))
                 return rpath
             except subprocess.CalledProcessError as EE:
-                log(f"ERROR: Could not prune {_r(rpath)}.")
-                log(f"Error: {EE}")
+                logger.error(f"Could not prune {_r(rpath)}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
@@ -98,86 +169,149 @@ class Prune:
         for _ in rpaths:
             pass
 
-        if self.errcount:
-            msg = "ERROR: At least one prune delete did not work."
-            log(msg)
-            raise ValueError(msg)
+        self.upload_snapshots()
 
     def summary(self):
-        _p = debug
+        _p = logger.debug
         if self.args.dry_run or self.args.interactive:
-            _p = log
+            _p = logger.info
 
-        num, units = bytes2human(sum(r[-1] for r in self.rpaths if r[-1] >= 0))
+        num, units = human_readable_bytes(sum(r[-1] for r in self.rpaths if r[-1] >= 0))
         s = "s" if len(self.rpaths) != 1 else ""
-        log(f"Pruning {len(self.rpaths)} file{s} ({num:0.2f} {units})")
+        logger.info(f"Pruning {len(self.rpaths)} file{s} ({num:0.2f} {units})")
 
         for rpath, size in self.rpaths:
-            num, units = bytes2human(size)
+            num, units = human_readable_bytes(size)
             paren = f"{num:0.2f} {units}" if size >= 0 else "DEL"
             _p(f"    {_r(rpath)} ({paren})")
+
+    def upload_snapshots(self):
+        name = f"{self.config.now.dt}Z.jsonl"
+        snap_src0 = self.config.tmpdir / name
+
+        if not snap_src0.exists() or not snap_src0.stat().st_size:
+            return
+
+        snap_srcz = self.config.tmpdir / f"{name}.gz"
+
+        with gz.open(str(snap_srcz), "wb") as fz, snap_src0.open("rb") as fu:
+            while block := fu.read(3 * 1024 * 1024):  # 3 MiB
+                fz.write(block)
+
+        self.config.rc.copyfile(
+            src=snap_srcz,
+            dst=(
+                self.config.dst,
+                f".dfb/snapshots/{self.config.now.obj.strftime('%Y/%m')}/{name}.gz",
+            ),
+            _config={"NoCheckDest": True},
+        )
 
 
 class PruneableDFBDST(DFBDST):
     def prune_rpaths(self, when, keep, subdir=""):
         # Pruning is more complex than it seems at first because of reference files.
-        # We do not want to delete files still being references. We also don't want
+        # We do not want to delete files still being referenced. We also don't want
         # to delete a delete-marker that "hides" those still-referenced files.
         # The algorithm to do this is described in comments
         #
-        # Because of this added complexity, subdir is just a convenience to filter those
-        # who do not start with it. The full prune is considered in step 1
+        # When subdir is selected, we can consider files that are in the subdir OR
+        # point to it (for references). Note, previous behavior was WRONG and would
+        # deleted referent apaths when a reference was outside subdir. This is fixed
+        # (and tested)
         subdir = f"{subdir.removesuffix('/').removeprefix('./')}/".removeprefix("/")
 
-        # Step 0: Group by aname
-        groups = self.group_by_apath(select="rpath,apath,timestamp,size")
+        # Step 0: Group by aname. These are sorted by timestamp. Only look within the
+        #         subdir but will later add things that point inside.
+        groups = self.group_by_apath(
+            select="rpath,apath,timestamp,size,ref_rpath",
+            conditions=("WHERE apath LIKE ?", [subdir + "%"]),
+        )
 
+        ## Regular prune -- This would be it if not for references
         # Step 1a: Bisect the group to find the cutoff spot, when <= ts
-        #          (<= means bisect_right). icut = iwhen - 1
+        #          (<= means bisect_right). Then do icut = iwhen - 1
+        #          to account for keeping the element older.
         # Step 1b: Shift by "keep" to keep specified versions
         # Step 1c: If there is nothing before the cutoff, keep it all (icut = 0) and
-        #          make sure to also keep at least one
-        # Step 1d: Keep everything to the right of icut. Universal set
-        # Step 1e: Save the group to the left of icut. Grouped list
+        #          make sure to also keep at least one unless that one is delete.
+        #          If it is delete, it will be covered in step 2
+        # Step 1d: Keep ~~everything~~ (NO) to the right of icut. Universal set
+        #          Only keep references to the right.
+        # Step 1e: Save for deletetion group to the left of icut. Grouped list.
+        #          Make sure to include ref_rpaths too. They will always get deleted.
+        # Step 1f: If subdir, add in additional references to keep that could point
+        #          there from outside only
         keep_rpaths = set()
         del_groups = {}
         for name, group in groups:
             iwhen = keyed_bisect_right(group, when, key=itemgetter("timestamp"))  # 1a
             iwhen -= keep  # 1b
-            icut = max([iwhen - 1, 0])  # 1a,c
-            icut = min([icut, len(group) - 1])  # 1c -- keep at least one
-            keep_rpaths.update(row["rpath"] for row in group[icut:])
-            del_groups[name] = group[:icut]
+            if iwhen >= len(group) and group[-1]["size"] < 0:
+                icut = iwhen
+            else:
+                icut = max([iwhen - 1, 0])  # 1a,c
+                icut = min([icut, len(group) - 1])
 
-            debug(f'(1) {_r(name)} keep {[row["rpath"] for row in group[icut:]]}')
-            debug(
-                f'(1) {_r(name)} consider for del {[row["rpath"] for row in group[icut:]]}'
+            keep_rpaths.update(
+                row["rpath"] for row in group[icut:] if row.get("ref_rpath", None)
+            )  # 1d
+            logger.debug(
+                f'(1) {_r(name)} keep {[row["rpath"] for row in group[icut:]]}'
             )
 
-        # Step 2: Loop over each group of to-be-deleted files
+            del_groups[name] = group[:icut]  # 1e
+            r0 = [row["rpath"] for row in group[:icut]]
+            r1 = [row.get("ref_rpath", None) for row in group[:icut]]
+            logger.debug(
+                f"(1) {_r(name)} consider for del {r0 + list(filter(bool,r1))}"
+            )
+
+        if subdir:  # 1f
+            with self.db() as db:
+                res = db.execute(
+                    """
+                    SELECT rpath
+                    FROM items
+                    WHERE
+                        rpath LIKE ? -- points inside subdir
+                    AND
+                        apath NOT LIKE ? -- but ins't inside it
+                    """,
+                    (subdir + "%", subdir + "%"),
+                )
+                keep_rpaths.update(row["rpath"] for row in res)
+
+        # Step 2:  Loop over each group of to-be-deleted files
         # Step 2a: Delete everything that isn't (1) referenced (i.e. in keep_rpaths)
-        #          or (2) a delete marker
-        # Step 2b: Remove any delete markers iff not the last item
+        #          or (2) a delete marker. Includes ref_rpath; which is not rpath
+        #          but will delete the reference file and do nothing when applied to the
+        #          DB (but the actual rpath will have been deleted too)
+        # Step 2b: Remove any delete markers if and only if not the last item since
+        #          they aren't hiding anything except maybe the final.
         # Step 2c: If and only if there is only ONE remaining item and it is a delete
         #          marker, delete it. (This makes sure that a delete marker "hides"
         #          a kept file, that is kept because of reference)
         del_rpaths = set()
-        for name, group in del_groups.items():
-            if subdir and not name.startswith(subdir):
-                debug(f"subdir = {_r(subdir)} filter on {_r(name)}")
-                continue
-
+        for name, group in del_groups.items():  # only with subdir from step 0
             _d = set()  # This isn't needed but makes debug msg easier
             keep_group = []
             for row in group:  # 2a
-                if row["rpath"] in keep_rpaths or row["size"] < 0:  # (1)  # (2)
+                if rr := row.get("ref_rpath", None):
+                    _d.add((rr, 0))
+
+                if row["rpath"] in keep_rpaths or row["size"] < 0:  # (1) & (2)
                     keep_group.append(row)  # do not delete yet
                     continue
+
                 _d.add((row["rpath"], row["size"]))
+
             del_rpaths.update(_d)
 
-            debug(f'(2a) {_r(name)} temp keep {[row["rpath"] for row in keep_group]}')
-            debug(f"(2a) {_r(name)} del {_d}")
+            logger.debug(
+                f'(2a) {_r(name)} temp keep {[row["rpath"] for row in keep_group]}'
+            )
+            logger.debug(f"(2a) {_r(name)} del {_d}")
 
             if not keep_group:
                 continue
@@ -193,8 +327,10 @@ class PruneableDFBDST(DFBDST):
             still_keep.append(keep_group[-1])  # Add the last item back
             del_rpaths.update(_d)
 
-            debug(f'(2b) {_r(name)} temp keep {[row["rpath"] for row in still_keep]}')
-            debug(f"(2b) {_r(name)} del {_d}")
+            logger.debug(
+                f'(2b) {_r(name)} temp keep {[row["rpath"] for row in still_keep]}'
+            )
+            logger.debug(f"(2b) {_r(name)} del {_d}")
 
             # 2c
             if len(still_keep) > 1:
@@ -203,17 +339,34 @@ class PruneableDFBDST(DFBDST):
             if row["size"] < 0:
                 del_rpaths.add((row["rpath"], row["size"]))
 
-                debug(f'(2c) {_r(name)} del {_r(row["rpath"])}')
+                logger.debug(f'(2c) {_r(name)} del {_r(row["rpath"])}')
 
         # A note: This can be made even more agressive because this may leave behind an
-        #         unneeded delete marker. For the sake of simplicity, I am not going to
-        #         worry about that!
-        #
-        # This section has 100% test coverage! Very good to have with the complexities
+        #         unneeded delete marker. For the most part, this is ignore but see
+        #         if there are any
 
+        # # Not used yet. Needs to be more thought out and tested
+        # res = self.db().execute("""
+        #     SELECT rpath
+        #     FROM (
+        #         -- Nest the conditional so that it finds all initials and then
+        #         -- later takes deletes.
+        #         SELECT rpath,size
+        #         FROM items
+        #         GROUP BY apath
+        #         HAVING MIN(timestamp) -- NOT max
+        #     )
+        #     WHERE size <0""")
+        # for row in res:
+        #     del_rpaths.add((row["rpath"], -1))
+
+        # This section has 100% test coverage! Very good to have with the complexities
         return del_rpaths
 
     def delete_rpath(self, rpath):
+        """
+        Remove all entries that point to the rpath even if they are references
+        """
         db = self.db()
         with db:
             db.execute(
@@ -224,7 +377,18 @@ class PruneableDFBDST(DFBDST):
             )
         db.commit()
         db.close()
+
+        item = {"_V": 1, "_action": "prune", "rpath": rpath}
+
+        self.config.tmpdir.mkdir(exist_ok=True, parents=True)
+        with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
+            print(json.dumps(item), file=fp, flush=True)
+
         return rpath
+
+
+class BrokenReferenceError(ValueError):
+    pass
 
 
 class KeyedListWrapper:

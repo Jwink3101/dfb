@@ -19,32 +19,33 @@ some more to be added.
 **TODO**: Better documentation of paramaters  
 **TODO**: More of the example for conditional uploads which remove the always flags
 **TODO**: Type annotation
+
+NOTE: rclonerc is a better way to use rclone. Many of these features predate me using
+      that API
 """
 import os, sys
 import subprocess
 import io
 import tempfile
 import json
-from functools import partialmethod, cached_property, partial
 import string
 import warnings
 import types
 import time
-
 import logging
+from functools import partialmethod, cached_property, partial
 
-_r = repr
+from .timestamps import timestamp_parser
+from . import __version__
 
 logger = logging.getLogger(__name__)
 
-from .timestamps import timestamp_parser
-
-from . import __version__
+_r = repr
 
 
-class Rclone:
+class RcloneCLI:
     """
-    Rclone object.
+    RcloneCLI object.
 
     Inputs:
     -------
@@ -61,7 +62,7 @@ class Rclone:
         Environment to awlays include. This is appended to os.environ.
         If there is something in os.environ that is *not* wanted, specify it
         with RLCONE.DELENV. ex:
-            {"RCLONE_PASSWORD_COMMAND": Rclone.DELENV}
+            {"RCLONE_PASSWORD_COMMAND": RcloneCLI.DELENV}
 
     no_check_dest [True]
         On many upload operations, it is faster to include '--no-check-dest' but on
@@ -175,7 +176,7 @@ class Rclone:
                 >>> fileinfo = list(rclone.listremote(subdir='myfile.ext'))[0]
 
         filters [empty]
-            Rclone filters as items. See also filter_flags
+            RcloneCLI filters as items. See also filter_flags
 
         filter_flags [empty]
             Additional filtering flags such as
@@ -237,7 +238,7 @@ class Rclone:
 
         subdir = subdir or ""  # Convert None to ""
 
-        cmd = ["lsjson", Rclone.pathjoin(self.remote, subdir), "--recursive"]
+        cmd = ["lsjson", RcloneCLI.pathjoin(self.remote, subdir), "--recursive"]
         if fast_list == "auto":
             fast_list = rclone.features.get("ListR", False)
         if fast_list:
@@ -277,7 +278,7 @@ class Rclone:
         res = self.call(cmd, pipe=pipe, stream=True, **_dictify(callopts))
 
         # Special case for '--stat' whether user specified or from iteminfo.
-        # Rclone doesn't do the one-line-per-response with this call.
+        # RcloneCLI doesn't do the one-line-per-response with this call.
         # A bit of a hack but we want it to pass through the for loop processing still.
         if "--stat" in cmd:
             lines = []
@@ -290,6 +291,7 @@ class Rclone:
 
         for oe, line in res:
             if oe != "stdout":
+                logger.debug(f"stdout: {line}")
                 continue
 
             # lsjson returns one entry per line. And always UTF8
@@ -357,7 +359,7 @@ class Rclone:
         cmd = [
             "copy",
             local,
-            Rclone.pathjoin(self.remote, destdir),
+            RcloneCLI.pathjoin(self.remote, destdir),
             "--no-traverse",  # Single file. This is better
             self.always_flag,  # Always upload
         ] + _flagify(flags)
@@ -390,7 +392,7 @@ class Rclone:
         cmd = [
             "copyto",
             local,
-            Rclone.pathjoin(self.remote, destfile),
+            RcloneCLI.pathjoin(self.remote, destfile),
             "--no-traverse",  # Single file. This is better
             self.always_flag,  # Always upload
         ] + _flagify(flags)
@@ -446,7 +448,7 @@ class Rclone:
         cmd = [
             "copy",
             upload_from,
-            Rclone.pathjoin(self.remote, destdir),
+            RcloneCLI.pathjoin(self.remote, destdir),
             self.always_flag,  # Always upload
             "--files-from",
             fp.name,
@@ -477,7 +479,7 @@ class Rclone:
         -------
         data
             Data to upload. If a string, it will be UTF8 encoded to bytes.
-            If it a file object, it will be read in Rclone.BLOCKSIZE blocks
+            If it a file object, it will be read in RcloneCLI.BLOCKSIZE blocks
             and uploaded. If a types.GeneratorType, will iterates and sent
             to rclone
 
@@ -509,7 +511,7 @@ class Rclone:
             try:
                 return self.write(data, destfile, fallback=False, **opts)
             except:  # Allow it to be anything!
-                self.debug("write failed. Trying fallback")
+                logger.error("write failed. Trying fallback")
                 return self.write(data, destfile, fallback=True, **opts)
 
         ###########################
@@ -537,7 +539,7 @@ class Rclone:
 
         cmd = [
             "rcat",
-            Rclone.pathjoin(self.remote, destfile),
+            RcloneCLI.pathjoin(self.remote, destfile),
             "--no-traverse",  # Single file. This is better
             self.always_flag,  # Always upload
         ] + _flagify(flags)
@@ -550,7 +552,7 @@ class Rclone:
         """downloads a remotefile file to the destdir"""
         cmd = [
             "copy",
-            Rclone.pathjoin(self.remote, remotefile),
+            RcloneCLI.pathjoin(self.remote, remotefile),
             destdir,
             "--no-traverse",  # Single file. This is better
             self.always_flag,  # Always download
@@ -562,7 +564,7 @@ class Rclone:
         """Upload a local file to the destfile"""
         cmd = [
             "copyto",
-            Rclone.pathjoin(self.remote, remotefile),
+            RcloneCLI.pathjoin(self.remote, remotefile),
             destfile,
             "--no-traverse",  # Single file. This is better
             self.always_flag,  # Always download
@@ -584,7 +586,7 @@ class Rclone:
         Return the bytes of the file or a fileobject. Note that changing the
         pipe settings with callopts may require you to seek() the file.
         """
-        cmd = ["cat", Rclone.pathjoin(self.remote, remotefile)]
+        cmd = ["cat", RcloneCLI.pathjoin(self.remote, remotefile)]
         if offset:
             cmd.extend(["--offset", str(offset)])
         if count:
@@ -619,7 +621,7 @@ class Rclone:
         Delete a remote path, potentially including directories.
         """
 
-        cmd = ["delete", Rclone.pathjoin(self.remote, remotefile)] + _flagify(flags)
+        cmd = ["delete", RcloneCLI.pathjoin(self.remote, remotefile)] + _flagify(flags)
 
         if rmdirs:
             cmd.append("--rmdirs")
@@ -648,7 +650,7 @@ class Rclone:
 
         """
         if "w" in mode:
-            raise io.UnsupportedOperation("Cannot read from stream")
+            raise io.UnsupportedOperation("Cannot write to stream")
         raw = _RawRcloneFileObj(remotefile, self, flags=flags, callopts=callopts)
         fp = io.BufferedReader(raw, buffer_size=buffer_size)
         if "b" in mode:
@@ -658,8 +660,8 @@ class Rclone:
     def _movecopy(self, remotesrc, remotedst, *, _cmd, flags=None, callopts=None):
         cmd = [
             _cmd,
-            Rclone.pathjoin(self.remote, remotesrc),
-            Rclone.pathjoin(self.remote, remotedst),
+            RcloneCLI.pathjoin(self.remote, remotesrc),
+            RcloneCLI.pathjoin(self.remote, remotedst),
             "--no-traverse",  # Single file. This is better
             self.always_flag,  # Always
         ] + _flagify(flags)
@@ -722,7 +724,7 @@ class Rclone:
         -------
         stdin [None]
             What to send to rclone. If bytes, will send directly. If a file
-            object, will send in Rclone.BLOCKSIZE (default 1kb) chunks. If a
+            object, will send in RcloneCLI.BLOCKSIZE (default 1kb) chunks. If a
             types.GeneratorType, will iterate and sent to rclone
 
         pipe [True]
@@ -754,11 +756,9 @@ class Rclone:
         finalcmd = [c for c in finalcmd if c != self.NOFLAG]
         finalcmd = [c if not isinstance(c, RcloneFile) else c.path for c in finalcmd]
 
-        self.debug(
-            (
-                f"rclone call {str(finalcmd)} with additional "
-                f"environ {json.dumps(self.universal_env)}"
-            )
+        logger.debug(
+            f"rclone call {str(finalcmd)} with additional "
+            f"environ {json.dumps(self.universal_env)}"
         )
 
         if pipe:
@@ -823,9 +823,9 @@ class Rclone:
     def _Popen(self, *args, **kwargs):
         return subprocess.Popen(*args, close_fds=True, **kwargs)
 
-    def debug(self, *args, **kwargs):
-        """Debug. Can subclass as needed"""
-        return logger.debug(*args, **kwargs)
+    # def logger.debug(self, *args, **kwargs):
+    #         """Debug. Can subclass as needed"""
+    #         return logger.logger.debug(*args, **kwargs)
 
     @staticmethod
     def pathjoin(*args, local_root=False):
@@ -834,10 +834,10 @@ class Rclone:
         there could be a ':' in the first part.
 
         The second argument could be '/file', or 'file' and the first could have a colon.
-            Rclone.pathjoin('a','b')   # a/b
-            Rclone.pathjoin('a:','b')  # a:b
-            Rclone.pathjoin('a:','/b') # a:/b # Note that these are unlike os.path.join
-            Rclone.pathjoin('a','/b')  # a/b
+            RcloneCLI.pathjoin('a','b')   # a/b
+            RcloneCLI.pathjoin('a:','b')  # a:b
+            RcloneCLI.pathjoin('a:','/b') # a:/b # Note that these are unlike os.path.join
+            RcloneCLI.pathjoin('a','/b')  # a/b
 
         """
         args = [str(a) for a in args]  # Pathlib
@@ -894,7 +894,7 @@ class Rclone:
 
         Example:
 
-            IN: rclone = Rclone('myremote:')
+            IN: rclone = RcloneCLI('myremote:')
                 with rclone.capture(save_results=True) as capture:
                     rclone.write('test data','data.txt')
                 print(capture.command_history[0])
@@ -920,13 +920,13 @@ class Rclone:
         )
 
     def __repr__(self):
-        return f"Rclone(remote={_r(self.remote)})"
+        return f"RcloneCLI(remote={_r(self.remote)})"
 
     def __truediv__(self, new):
         return RcloneFile(self, new)
 
 
-### Rclone Objects that can be used for source
+### RcloneCLI Objects that can be used for source
 class RcloneFile:
     """
     Object representing many rclone operations. Note that move and moveto will
@@ -936,11 +936,11 @@ class RcloneFile:
     def __init__(self, rcloneobj, remoteitem=""):
         self.rclone = rcloneobj
         self.remoteitem = remoteitem
-        self.path = Rclone.pathjoin(self.rclone.remote, self.remoteitem)
+        self.path = RcloneCLI.pathjoin(self.rclone.remote, self.remoteitem)
         self.fs_remote = self.rclone.remote, self.remoteitem
 
     def __truediv__(self, new):
-        # Need to decide if using Rclone.pathjoin or os.path.join
+        # Need to decide if using RcloneCLI.pathjoin or os.path.join
         if self.remoteitem:
             return RcloneFile(self.rclone, os.path.join(self.remoteitem, new))
         return RcloneFile(self.rclone, new)

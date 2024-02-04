@@ -1,92 +1,115 @@
 import sys, os
 import time
-from pathlib import Path
 import tempfile
 import uuid
 import copy
-from functools import partial, partialmethod
+import logging
 import io
+import hashlib, base64
+from functools import partial, partialmethod
+from pathlib import Path
 from threading import Lock
+
+logger = logging.getLogger(__name__)
 
 _r = repr
 
 LOCK = Lock()
 _TEMPDIR = False  # Just used in testing
 
-
-class Log:
-    def __init__(self):
-        self.verbosity = 1
-
-    def _init(self, *, tmpdir, verbosity):
-        self.tmpdir = tmpdir = Path(tmpdir)
-        tmpdir.mkdir(parents=True, exist_ok=True)
-
-        self.log_file = self.tmpdir / "log.log"  # msg <= verbosity
-        self.debug_file = self.tmpdir / "debug.log"  # msg > verbosity
-        self.verbosity = verbosity
-        debug(f"log started. {tmpdir = } {verbosity = }")
-
-    def log(self, *args, prefix="", verbosity=1, print_mode=False, **kwargs):
-        """print() to the log with date"""
-        verbosity = int(verbosity)
-
-        # I have been saving the debug but it can be just too slow when it needs to
-        # write a lot of debugs.
-        if not _TEMPDIR and verbosity > self.verbosity:
-            return
-
-        t = [time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())]
-        if verbosity == 2:
-            t.append("DEBUG")
-        elif verbosity > 2:
-            t.append(f"DEBUG({verbosity})")
-
-        if prefix:
-            if isinstance(prefix, list):
-                prefix = ".".join(p for p in prefix if p)
-            t.append(prefix)
-
-        t = ".".join(t) + ": "
-        if print_mode:
-            t = ""
-
-        with io.StringIO() as sio:
-            kwargs["file"] = sio
-            kwargs["end"] = ""
-
-            print(*args, **kwargs)
-
-            lines = sio.getvalue().split("\n")
-            lines = [t + line for line in lines]
-
-        lines = "\n".join(lines)
-
-        del kwargs["file"]
-
-        with LOCK:  # Append should be atomic but just in case, lock it along with print
-            # I have no idea why I need this. It only seems to be an issue under pypy
-            # but it is quick so I will keep it
-            self.tmpdir.mkdir(parents=True, exist_ok=True)
-
-            if verbosity > self.verbosity:
-                # See note above
-                with open(self.debug_file, mode="at") as fobj:
-                    print(lines, file=fobj)
-            else:
-                with open(self.log_file, mode="at") as fobj:
-                    print(lines, file=fobj)
-                print(lines)
-
-    __call__ = log
-    debug = partialmethod(log, verbosity=2)
-    ddebug = partialmethod(log, verbosity=3)
-    print = partialmethod(log, verbosity=0, print_mode=True)
+INF = float("inf")
 
 
-log = Log()  # Still needs to be _init. Done in the config
-debug = log.debug
-ddebug = log.ddebug
+class NotDFBFilter(logging.Filter):
+    def __init__(self, include_serve=False):
+        self.include_serve = include_serve
+        super().__init__()
+
+    def filter(self, record):
+        if record.name.endswith("-rc-server") and not self.include_serve:
+            return False
+        return record.name.startswith("dfb.")
+
+
+def init_logging(logfile, debuglogfile, verbosity):
+    """
+    Start logging. If _TEMPDIR is set, create a second one that always saves with
+    more detail
+    """
+    USE_DEBUGFILE = bool(_TEMPDIR)
+
+    levels = [logging.WARN, logging.INFO, logging.DEBUG]
+
+    verbosity = min([len(levels), max([0, verbosity])])  # +1 for rc server
+    if verbosity == len(levels):
+        not_dfb_filter = NotDFBFilter(include_serve=True)
+        verbosity -= 1
+    else:
+        not_dfb_filter = NotDFBFilter()
+
+    level = levels[verbosity]
+
+    formatter = logging.Formatter(
+        fmt="%(asctime)s:%(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",  # "%z" removed
+    )
+
+    # Set up handlers with the level since the root_logger *may* be set lower
+    file_handler = logging.FileHandler(logfile)
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(level)
+    file_handler.addFilter(not_dfb_filter)
+
+    stream_handler = logging.StreamHandler(stream=sys.stderr)
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(level)
+    stream_handler.addFilter(not_dfb_filter)
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()  # Need to clear them  for testing
+
+    root_logger.setLevel(level=0 if USE_DEBUGFILE else level)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(stream_handler)
+
+    if USE_DEBUGFILE:
+        dformatter = logging.Formatter(
+            fmt=(
+                "%(asctime)s.%(msecs)d:"  # https://stackoverflow.com/a/7517430/3633154
+                "%(name)s:"
+                # "%(module)s:"
+                "%(lineno)d:"
+                "%(funcName)s:"
+                "%(levelname)s: "
+                "%(message)s"
+            ),
+            datefmt="%Y%m%d%H%M%S",
+        )
+
+        dfile_handler = logging.FileHandler(debuglogfile)
+        dfile_handler.setFormatter(dformatter)
+        dfile_handler.setLevel(logging.DEBUG)
+        dfile_handler.addFilter(NotDFBFilter(include_serve=True))
+
+        root_logger.addHandler(dfile_handler)
+
+
+def clean_config_id(config_id):
+    """Cleans it up to alpha-numeric only"""
+    config_id0 = config_id
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-[]"
+    config_id = "".join(c if c in allowed else "=" for c in config_id)
+
+    if len(config_id) > 40:
+        md5 = base64.urlsafe_b64encode(
+            hashlib.md5(config_id.encode()).digest()
+        ).decode()
+        config_id = f"{config_id[:20]}.{md5[:8]}.{config_id[-20:]}"
+
+    if config_id0 != config_id:
+        logger.debug(f"config_id changed from {_r(config_id0)} to {_r(config_id)}")
+
+    return config_id
 
 
 class ConfigError(ValueError):
@@ -116,14 +139,17 @@ class Config:
         self.tmpdir.mkdir(parents=True, exist_ok=True)
 
         # Start the logging
-        log._init(tmpdir=self.tmpdir, verbosity=verbosity)
-        log(f"DFB ({__version__})")
+        self.logfile = self.tmpdir / "log.log"
+        self.debuglogfile = self.tmpdir / "debug.log"
+        init_logging(self.logfile, self.debuglogfile, verbosity)
+
+        logger.info(f"DFB ({__version__})")
         if __git_version__:
-            log(f" {__git_version__['version']} {__git_version__['origin']}")
-        log(f"Now: {self.now.obj.astimezone().isoformat()}")
-        log(f"Backup Timestamp: {self.now.dt}Z")
-        log(f"config path: '{self.configpath}'")
-        log(f"tmpdir: {str(self.tmpdir)}")
+            logger.info(f" {__git_version__['version']} {__git_version__['origin']}")
+        logger.info(f"Now: {self.now.obj.astimezone().isoformat()}")
+        logger.info(f"Backup Timestamp: {self.now.dt}Z")
+        logger.info(f"config path: '{self.configpath}'")
+        logger.info(f"tmpdir: {str(self.tmpdir)}")
 
     def _write_template(self, force=False):
         from . import __version__
@@ -143,23 +169,28 @@ class Config:
 
         os.chmod(self.configpath, self.configpath.stat().st_mode | 0o100)
 
-        debug(f"Wrote template config to {self.configpath}")
+        logger.debug(f"Wrote template config to {self.configpath}")
 
     def parse(self, override_txt=""):
-        from .rclone import RC
+        from .rclonerc import RC
 
         if self.configpath is None:
             raise ValueError("Must have a config path")
 
         # Passed to the config file
+        self._config["stats"] = 30  # Fixed. Undocumented that this can be set
         self._config["os"] = os
         self._config["Path"] = Path
-        self._config["log"] = self._config["print"] = partial(log, prefix="config")
-        self._config["log0"] = log
-        self._config["debug"] = partial(debug, prefix="config")
+        self._config["log"] = lambda x: logger.info(f"config: {x}")
+        self._config["print"] = lambda x: logger.info(f"config: {x}")
         self._config["__file__"] = self.configpath
         self._config["__dir__"] = self.configpath.parent
         self._config["DELENV"] = RC.DELENV
+        self._config["clean_config_id"] = clean_config_id
+
+        # Advanced options
+        self._config["disable_refresh"] = False
+        self._config["dbcache_dir"] = None
 
         self._config.update(self.add_params)
 
@@ -195,8 +226,9 @@ class Config:
             self._config.pop(key, 0)
 
         self._validate()
-        log(f"ID: {self._uuid}")
-        debug(f"Read config {self.configpath}")
+
+        logger.info(f"ID: {self.config_id}")
+        logger.debug(f"Read config {_r(str(self.configpath))}")
         for k in self._config_keys:
             if k not in self._config:
                 continue
@@ -206,7 +238,7 @@ class Config:
                     n: (k if n != "RCLONE_CONFIG_PASS" else "**REDACTED**")
                     for n, k in dispval.items()
                 }
-            debug(f"   {k} = {dispval}")
+            logger.debug(f"   {k} = {_r(dispval)}")
 
         # Set these up because all methods will use them
         settings = dict(
@@ -219,24 +251,31 @@ class Config:
         )
         if self.metadata:
             settings["universal_flags"].append("--metadata")
+            # self.rclone_flags.append("--metadata")
 
-        # Add these here since we will need them
-        from .rcloneapi import Rclone as RcloneAPI
-        from .rclone import RC
+        # Set up rclone objects. For the most part, we use the RC interface
+        # but there are a few things where the CLI is better or easier. These may
+        # go away in future versions. The CLI interface (rclonecli.py) has many
+        # "features" that are eclipsed by rc, but a few are better on CLI.
+        #
+        # Add these here since we will need them throughout the eval. Note that
+        # rc is using the rclone server while (src/dst)_rclone is making CLI
+        # calls to rclone.
+        from .rclonecli import RcloneCLI
+        from .rclonerc import RC
 
         self.rc = RC(
             rclone_exe=self.rclone_exe,
-            serve_flags=self.rclone_flags + ["-vv"],
+            serve_flags=self.rclone_flags
+            + ["-vv"],  # always include verbose but filter later
             rclone_env=self.rclone_env,
-            serve_log_callback=partial(debug, prefix="rc"),
         )
-        self.rc.kill_at_exit()
 
-        self.src_rclone = RcloneAPI(self._config["src"], **settings)
-        self.dst_rclone = RcloneAPI(self._config["dst"], **settings)
+        self.src_rclone = RcloneCLI(self._config["src"], **settings)
+        self.dst_rclone = RcloneCLI(self._config["dst"], **settings)
         # Monkey patch the debug
-        self.src_rclone.debug = partial(debug, prefix="src-rclone")
-        self.dst_rclone.debug = partial(debug, prefix="dst-rclone")
+        self.src_rclone.debug = lambda x: logger.debug(f"src-rclone: {x}")
+        self.dst_rclone.debug = lambda x: logger.debug(f"dst-rclone: {x}")
 
         return self
 
@@ -244,7 +283,7 @@ class Config:
         """
         Validate config
         """
-        from .rclone import FILTER_FLAGS
+        from .rclonerc import FILTER_FLAGS
 
         if self.src == "<<MUST SPECIFY>>":
             raise ConfigError("Must specify 'src'")
@@ -252,27 +291,27 @@ class Config:
             raise ConfigError("Must specify 'dst'")
 
         allowed = {
-            "compare": {"mtime", "size", "hash"},
-            "dst_compare": {"mtime", "size", "hash", None},
-            "renames": {"size", "mtime", "hash", False, None},
-            "reuse_hashes": {"size", "mtime", False, None},
+            "compare": {"mtime", "size", "hash", "auto"},
+            "dst_compare": {"mtime", "size", "hash", "auto", None},
+            "renames": {"size", "mtime", "hash", "auto", False, None},
+            "dst_renames": {"size", "mtime", "hash", "auto", False, None},
             "links": {"skip", "link", "copy"},
             "rename_method": {"reference", "copy", False, None},
+            "get_modtime": {True, False, "auto"},
+            "get_hashes": {True, False, "auto"},
         }
 
         for key, values in allowed.items():
             val = self._config[key]
             if val not in values:
-                raise ConfigError(
-                    f"Allowed values for '{key}' are {values}. Specified {repr(val)}"
-                )
+                msg = f"Allowed values for '{key}' are {values}. Specified {repr(val)}"
+                raise ConfigError(msg)
+        ff = FILTER_FLAGS.union(["--one-file-system"])
+        if badflags := ff.intersection(self.rclone_flags):
+            msg = f"May not have {badflags} in 'rclone_flags'. Use 'filter_flags'"
+            raise ConfigError(msg)
 
-        badflags = FILTER_FLAGS.intersection(self.rclone_flags)
-        if badflags:
-            raise ConfigError(
-                f"May not have {badflags} in 'rclone_flags'. Use 'filter_flags'"
-            )
-
+        # These will also set to auto if the compare or renames is auto
         self._config["dst_compare"] = (
             self._config["dst_compare"] or self._config["compare"]
         )
@@ -283,10 +322,66 @@ class Config:
             self._config["rclone_flags"].append("--copy-links")
 
         if not self._config.get("dst_atomic_transfer", True):
-            log(
+            logger.info(
                 "WARNING: 'dst_atomic_transfer = False' is deprecated since rclone 1.63 "
                 "handles it for non-atomic remotes"
             )
+
+        # Set the config_id but give preference to _uuid
+        self._config["config_id"] = clean_config_id(
+            self._config.get("_uuid", self._config["config_id"])
+        )
+
+    def _set_auto(self):
+        sf = self.rc.features(self.src)
+        df = self.rc.features(self.dst)
+
+        src_mtime = sf["Precision"] < 1.1e9 and not sf["Features"]["SlowModTime"]
+        dst_mtime = df["Precision"] < 1.1e9 and not df["Features"]["SlowModTime"]
+
+        if self.compare == "auto":  # src to src
+            self.compare = "mtime" if src_mtime else "size"
+            logger.debug(f"auto-setting 'compare' to {_r(self.compare)}")
+
+        if self.dst_compare == "auto":  # src to dst
+            # don't *just* do self.compare since it could be hash
+            if self.compare != "size" and src_mtime and dst_mtime:
+                self.dst_compare = "mtime"
+            else:
+                self.dst_compare = "size"
+
+            logger.debug(f"auto-setting 'dst_compare' to {_r(self.dst_compare)}")
+
+        if self.renames == "auto":  # src to src
+            self.renames = "mtime" if src_mtime else False
+            logger.debug(f"auto-setting 'renames' to {_r(self.renames)}")
+
+        if self.dst_renames == "auto":  # src to dst
+            # don't *just* do self.renames since it could be hash or False
+            if self.renames != "size" and self.renames and src_mtime and dst_mtime:
+                self.dst_renames = "mtime"
+            else:
+                self.dst_renames = False
+
+            logger.debug(f"auto-setting 'dst_renames' to {_r(self.dst_renames)}")
+
+        if self.get_modtime == "auto":
+            self.get_modtime = src_mtime
+            logger.debug(f"auto-setting 'get_modtime' to {_r(self.get_modtime)}")
+
+        if self.get_hashes == "auto":
+            # self.get_hashes = sf["Hashes"] and not sf["Features"]["SlowHash"]
+            # if sf['String'].startswith('S3 '):
+            #    logger.warning(
+            #        "src is S3 remote. S3 doesn't *always* provide hashes without "
+            #        "additional API calls. Setting get_hashes to False to be safe"
+            #    )
+            #    self.get_hashes = False
+            # logger.debug(f"auto-setting 'get_hashes' to {_r(self.get_hashes)}")
+
+            # to be safe, making this always false. Users should set this if they want it
+            self.get_hashes = False
+            logger.debug(f"setting 'get_hashes' to False regardless of remotes")
 
     def __getattr__(self, attr):
         return self._config[attr]
@@ -321,13 +416,13 @@ This configuration file is read as Python so things can be customized as
 desired. With few exceptions, any missing items will go to the defaults
 already specified.
 
-Rclone flags should always be a list. 
+rclone flags should always be a list. 
 Example: `--exclude myfile` will be ['--exclude','myfile']
 
 Defaults are sensible for a local source. Change as needed for others.
 
 A few modules, including `os` and `Path = pathlib.Path` are already loaded along
-with `log()` and `debug()`
+with `logger.info()` and `logger.debug()`
 
 Also defines:
     __file__ : Absolute path of the config file. pathlib.Path
@@ -336,184 +431,119 @@ Also defines:
 
 ALL LOCAL PATHS SHOULD BE ABSOLUTE
 """
-# Specify the source and destination. if local, no need to specify in
-# rclone remote format BUT SHOULD BE ABSOLUTE
+##############################################
+##              Basic Settings              ##
+##                (required)                ##
+##############################################
+
+# Specify the source and destination rclone remotes
 src = "<<MUST SPECIFY>>"
 dst = "<<MUST SPECIFY>>"
 
-# Specify FILTERING flags only. Note that if filtering flags are used later,
-# it *will* cause issues. Examples of rclone filters:
-#     --include --exclude --include-from --exclude-from --filter --filter-from
-#     --exclude-if-present
+##############################################
+##                 Filters                  ##
+##############################################
+
+# Specify flags used for filtering. See https://rclone.org/filtering/
 #
-# Must be specified as a list, e.g., ["--exclude","*.exc"]
-# If using flags like ''--filter-from', they should be absolute. Could do:
+# If using flags like '--filter-from', they should be absolute paths. Example:
 #   ["--filter-from", __dir__ / "myfilters.txt"]
 #
 # Note that when backups use --subdir, the paths specified here may be incorrect to the
 # source. The variable 'subdir' is defined to assist. USE WITH CAUTION
 filter_flags = []
 
-# General rclone flags are called every time rclone is called. This is how
-# you can specify things like the conifg file.
-# Remember that this config is evaluated from its parent directory.
-#
-# Example: ["--config", "path/to/config"]
-#
-# Note: Not all flags are compatible and may break the behavior, e.g. --progress
-# Do NOT use flags like --links, --copy-links, or --skip-links here. See links below
-rclone_flags = []
 
-# The following are added to the existing environment.
-# These should NOT include any filtering!
-# Example: Getting config password
+##############################################
+## Comparison and Rename-Tracking Settings  ##
+##           (defaults to "auto")           ##
+##############################################
+
+# src-to-src comparison to determine changes. Auto tries to use mtime if supported.
+compare = "auto"  # "size", "mtime", "hash", "auto"
+
+# src-to-dst comparison such as after a refresh without snapshots. None uses 'compare'
+dst_compare = None  # "size", "mtime", "hash", "auto", None
+
+# Rename tracking src-to-src. False disables it. "size" is risky!
+renames = "auto" # "size", "mtime", "hash", "auto", False
+
+# Rename tracking src-to-dst. None uses 'renames'
+dst_renames = None  # "size", "mtime", "hash", "auto", False, None
+
+# Rename files with server-side-copy or with reference file
+rename_method = "reference"  # 'reference', 'copy'
+
+##############################################
+##             rclone Settings              ##
+##         (optional, intermediate)         ##
+##############################################
+
+# Flags and environment for general rclone usage. 
+# Examples include --config (or RCLONE_CONFIG). 
+# Example for config password
 #   > from getpass import getpass
 #   > rclone_env = {"RCLONE_CONFIG_PASS": getpass("Password: ")}
-#
-# This is also useful to set the cache dir which is used by DFB
-#    > rclone_env = {'RCLONE_CACHE_DIR':'my/cache/dir'}
-# Paths should be absolute.
+# Not all flags are compatible. Do not use --links (see below)
+rclone_flags = []
 rclone_env = {}
 
-# Due to https://github.com/rclone/rclone/issues/6855 in rclone, dfb manually
-# handles links. This isn't perfect and there may be minor edge cases around non-local
-# remotes with files ending in .rclonelink.
-# Options:
-#   'skip' : Same as --skip-links (DEFAULT)_
-#   'link' : Same as --links. Will create a .rclonelink file
-#   'copy' : Same as --copy-links. Will copy the file itself
-#
-# If using a non-local remote, ignore this.
-# Note that symlinks are not restored. The will maintain the rclonelink extension but this
-# can be easily fixed after restore.
-links = 'skip' # {'skip','link','copy'}
-
-# This sets the number of individual file transfers at a time and the general
-# concurrency of rclone calls. Note that there are other rclone flags that will
-# split transfers into more connections as well.
-concurrency = os.cpu_count()
-
-# Specify the attributes to decide if a source file is modified.
-#   "size"  : Did the size change. Acceptable but easy to have false negative
-#   "mtime" : Did the size and modification time change. Requires that source has
-#             ModTime. Can even use --use-server-modtime flags on the source
-#   "hash"  : Use the hash. Note that using 'hash' with `reuse_hashes = 'mtime'`
-#           : is *effectivly* still mtime
-compare = "mtime"  # "size", "mtime", "hash"
-
-# Generally, comparisons are done from source-to-source but if the information
-# comes from the destination such as after a '--refresh', different attributes
-# may be used if the destination does not support the same attributes of the
-# source (e.g. use mtime on a local source but destination is WebDAV which
-# doesn't support it), you can specify an alternative compare attribute.
-# Options are the same as for `compare` plus `None` which means to use the same.
-dst_compare = None  # None means use `compare`
-
-# When listing the destination directly from --refresh, you can specify additional
-# flags that you may otherwise not need. For example, if the destination is S3, you
-# may with to include --fast-list
+# Flags for refresh specifically. Example: --fast-list
 dst_list_rclone_flags = []
 
-# moves/renames can be tracked if the file is unmodified other than the name.
-#
-# Tracking is done via the following. Note that the pool of considered
-# files are *only* those that have been identified as new.
-#
-#   'size'    : Size of the file only. Not very safe. Use with extreme caution
-#   'mtime'   : mtime and size. Slightly safer than size but still risky
-#   'hash'    : Hash of the files.
-#    False    : Disable rename tracking
-#
-# Renamed files are references to the original.
-renames = "mtime"
-
-# Similarly, renames on a destination-based file information can be different
-dst_renames = None # None means use 'renames'
-
-# Specify whether to use a reference for renames or copy. Ignored if renames are
-# False.
-#   'reference' : Use a small file that gives the relative position of the original
-#   'copy'      : Use a copy command. This is LESS efficient if your remote doesn't
-#                 support server-side-copy but it'll still work.
-rename_method = 'reference' # 'reference' or 'copy'
-
-# When doing mtime comparisons, what is the error to allow. Ideally, this
-# should be small since it is always on the same machine but some filesystems
-# have some slack.
-dt = 1.1  # seconds
-
-# Some remotes (e.g. S3) require an additional API call to get modtimes. If you
-# are comparing with 'size' of 'hash', you can forgo this API call by setting
-# this to False. Note that this may be ignored if modtimes are needed.
-# Note that the destination modtimes are ONLY ever gotten if needed
-get_modtime = True  # True means you DO save ModTime at the source
-
-# Hashes can be expensive to compute on "SlowHash" remotes such as local or sftp.
-# As such, rather than recompute them all, the hashes of the previous state
-# can be used if they match based on this setting. If this is set, unmatched files
-# are hased in a second call. Setting this to anything but False when using 
-# compare = 'hash' is the same as using that property for change detection then
-# verifying the backup via hash.
-#
-#   "size"  : Reuse hashes if filename and size match the previous
-#   "mtime" : Reuse hashes if the filename, size, and mtime (within dt) match
-#   False   : Do NOT reuse hashes. Note: Setting this to False on a "SlowHash"
-#             remote *and* requiring hashes through other settings will be very slow.
-reuse_hashes = False # "mtime"
-
-# Some remotes may not *always* compute hashes for every object. Rather than fail for the
-# hash mismatch, this will revert to a 'size' comparison (done before hashes are
-# even considered). This is the save behavior as rclone with --checksum
-error_on_missing_hash = False
-
-# Some remotes (notably local) allow for multiple hash types. If this is specified
-# AND hashes need to be computed, you can set the types. Specify as a single item
-# (e.g. hash_type = 'sha1') or as a tuple (e.g. hash_type = 'sha1','md5'). If None
-# (default), will do all possible
-hash_type = None
-
-# Even if the hashes are not needed for compare or move-tracking, it can be helpful
-# to have the file hashes. It is NOT recommended for "SlowHash" remotes (e.g. local,
-# sftp) unless you ALSO have `reuse_hashes` set. Note thatthis may be ignored if
-# hashes are needed anyway.
-get_hashes = False
-
-# Specify the path to the rclone executable.
+# Executable
 rclone_exe = "rclone"
 
-# How often to report stats. Especially useful when listing slower remotes.
-stats = 30 # seconds
+##############################################
+##          Intermediate Settings           ##
+##                (optional)                ##
+##############################################
 
-# Specify whether to upload logs to the remote. They will be in .dfb/logs
-upload_logs = True
+# How to handle links on local src. 'link' makes .rcloneline files and 
+# 'copy' copies the referent. See https://github.com/rclone/rclone/issues/6855
+links = "link"  # {'skip','link','copy'}
 
-# Specify additional log directories. These should be full rclone remote directories
-# to save the log in addition to the remote. Can specify as a single string or a
-# list/tuple/etc if you wish to use multiple.
-log_dest = None
-# log_dest = "/full/path/to/local"
-# log_dest = "/full/path/to/local", "remote:path/to/log"
+# Number of transfers. Use remote-specific flags for additional control such as
+# --s3-upload-concurrency.
+concurrency = os.cpu_count()
 
-# dfb can optionally upload snapshots of the files modified at this timestamp. Note that 
-# these are *not* affected by prune and there is (currently) no way to rebuild the 
-# database from them (maybe in the future). But they could be useful for some 
-# scripted recovery metadata if needed since they are going to be based on local 
-# attributes. dfb will try to upload even if there is a failure. The results are
-# functionally the same as calling `snapshot --only <timestamp> --deleted`
-upload_snapshots = True
+# Tolerance on mtimes
+dt = 1.0  # seconds
 
-# Also store and transfer metadata. Uses rclone's metadata capabilities
-# as outlined at https://rclone.org/docs/#metadata.
-# Not all remotes (either source or dest) can read/write this but, if it can
-# be read on the source, it will be preserved in the filelist.
-# Note: Changing metadata will not backup the file again and will likely not be preserved
+# Whether to always get src mtime. Can be expensive and slow on some remotes.
+get_modtime = "auto"  # True, False, "auto"
+
+# Allow missing hash. Falls back to "size"
+error_on_missing_hash = False
+
+# String or list of strings of hash types. None uses all available on a remote
+hash_type = None 
+
+# Whether to always request hashes. "auto" maps to False for now
+get_hashes = False # True, False, "auto"
+
+# Request and transfer (if possible) metadata. Metadata is also stored in the snapshot
+# files in case the dst doesn't support it. However, it must be restored manually if not
+# supported. Changes in file metadata will *not* force a backup again.
 metadata = True
 
+# Specify additional log destinations. These should be full rclone remote directories
+# to save the log in addition to the remote. String or list of strings
+log_dest = None
+
+# Unique name for this config file. Default is just based on the src and dst. Will be
+# processed and cleaned as needed
+config_id = f"{src}-{dst}"
+
+##############################################
+##       Pre- and Post-Shell Options        ##
+##                (optional)                ##
+##############################################
+
 # Pruning is the only distructive process in dfb. In order to make sure it isn't done by
-# accident, setting this to True will force all pruneing to be as if called with 
+# accident, setting this to True will force all pruneing to be as if called with
 # --dry-run. To undo this, you must override it:
 #   --override "disable_prune = False"
-# Defaults to False
 disable_prune = False
 
 ## Pre-, Post- and fail- shell commands to run
@@ -528,7 +558,7 @@ disable_prune = False
 #
 # Can be specified as the following:
 #
-#     string : Run with shell=True Can cd as needed (including `cd $CONFIGDIR`) and 
+#     string : Run with shell=True Can cd as needed (including `cd $CONFIGDIR`) and
 #              can be multiple lines and multiple commands.
 #     list   : Will execute with shell=False in the current directory
 #     dict   : Specify subprocess.Popen flags plus the keyword 'cmd'. YOU decide if
@@ -536,7 +566,7 @@ disable_prune = False
 #              for std(out/err). Will update os.environ with any 'env' settings.
 #
 # If the final cmd if specified directly as a list or a list inside the dict, each
-# command will be run through C-style formatting of the environ. C-Style is used to not 
+# command will be run through C-style formatting of the environ. C-Style is used to not
 # break the more-common str.format (or f-string) formats that may exist.
 # os.environ may be updated with `env` inside of a dict.
 #
@@ -561,10 +591,5 @@ fail_shell = ""
 # This should only be changed by the user when migrating from an older config
 # to a newer one. Just because the current version of dbf and the version
 # below do not match, it does not mean the run won't work.
-_version = "__VERSION__"
-
-# This is a random string that should be different in every config.
-# It is used to define the name of the databases used in the sync. If it is changed, 
-# the next run should be done with `--refresh` to start a new database.
-_uuid = "__UUID4__"
+_version = "20240130.0"
 '''

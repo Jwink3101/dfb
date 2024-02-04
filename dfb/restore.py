@@ -4,13 +4,16 @@ Restores
 import os, sys
 import subprocess
 import shlex
-from . import log, debug, LOCK
+import logging
+
+from . import LOCK
 from .dstdb import DFBDST
-from .rclone import rcpathjoin, rcpathsplit
-from .utils import bytes2human, star, listify, shell_header
+from .rclonerc import rcpathjoin, rcpathsplit
+from .utils import human_readable_bytes, star, listify, shell_header
 from .threadmapper import thread_map_unordered as tmap
 
 _r = repr
+logger = logging.getLogger(__name__)
 
 
 class SourceNotFoundError(ValueError):
@@ -22,8 +25,10 @@ class Restore:
         self.config = config
         self.args = args = config.cliconfig
 
-        # Handle @src
-        if args.dest.startswith("@src"):
+        # Handle @src alone or @src/. But we do not want @srcc to work.
+        if args.dest == "@src":
+            args.dest = config.src
+        elif args.dest.startswith("@src/"):
             args.dest = rcpathjoin(config.src, args.dest[5:])  # 5: for /
 
         self.dstdb = DFBDST(config)
@@ -36,11 +41,11 @@ class Restore:
         self.summary()
 
         if not self.transfers:
-            log("No Transfers")
+            logger.info("No Transfers")
             return
 
         if self.args.dry_run:
-            log("DRY-RUN. Exit")
+            logger.info("DRY-RUN. Exit")
             return
         elif self.args.interactive:
             r = input("Do you want to continue? [Y]/N:")
@@ -56,7 +61,10 @@ class Restore:
         args = self.args
 
         snap = self.dstdb.snapshot(
-            path=args.source, before=args.at, select="apath,rpath,size"
+            path=args.source,
+            before=args.before,
+            after=args.after,
+            select="apath,rpath,size",
         )
         snap = map(self.dstdb.fullrow2dict, snap)
 
@@ -75,7 +83,8 @@ class Restore:
         args = self.args
 
         row = self.dstdb.snapshot(
-            before=args.at,
+            before=args.before,
+            after=args.after,
             select="apath,rpath,size",
             conditions=[("apath = ?", args.source)],
         ).fetchone()
@@ -95,17 +104,21 @@ class Restore:
         self.transfers = [(row["rpath"], dest, row["size"])]
 
     def summary(self):
-        _p = debug
+        _p = logger.debug
         if self.args.dry_run or self.args.interactive:
-            _p = log
+            _p = logger.info
 
-        num, units = bytes2human(sum(r[-1] for r in self.transfers))
+        num, units = human_readable_bytes(sum(r[-1] for r in self.transfers))
         s = "s" if len(self.transfers) != 1 else ""
-        log(f"Restoring {len(self.transfers)} file{s} ({num:0.2f} {units})")
+        logger.info(f"Restoring {len(self.transfers)} file{s} ({num:0.2f} {units})")
 
         for src, dst, size in self.transfers:
-            num, units = bytes2human(size)
-            _p(f"    {_r(src)} --> {_r(dst)} ({num:0.2f} {units})")
+            num, units = human_readable_bytes(size)
+            s = rcpathjoin(self.config.dst, src)
+            d = rcpathjoin(*listify(dst))
+            if d == "-":
+                d = "<<stdout>>"
+            _p(f"    {_r(s)} --> {_r(d)} ({num:0.2f} {units})")
 
     def transfer_shell(self):
         config = self.config
@@ -123,16 +136,16 @@ class Restore:
             out.append(shlex.join(nc))
 
         if self.args.shell_script == "-":
-            log.print("\n".join(out), flush=True)
+            print("\n".join(out), flush=True)
         else:
             with open(self.args.shell_script, "wt") as fp:
                 fp.write("\n".join(out))
-            log(f"Shell script written to {_r(self.args.shell_script)}")
+            logger.info(f"Shell script written to {_r(self.args.shell_script)}")
 
     def transfer(self):
         config = self.config
         rc = config.rc
-        rc.start_rc()
+        rc.start()
 
         self.errcount = 0
 
@@ -147,7 +160,7 @@ class Restore:
                             sys.stdout.buffer.write(res + b"\n")
                             sys.stdout.buffer.flush()
                         except AttributeError:
-                            log(
+                            logger.info(
                                 (
                                     "WARNING: Could not write to stdout buffer. "
                                     "Will try to decode. Otherwise, you should "
@@ -160,7 +173,7 @@ class Restore:
                     return
                 stxt = rcpathjoin(*listify(src))
                 dtxt = rcpathjoin(*listify(dst))
-                log(f"Transfering {_r(stxt)} to {_r(dtxt)}.")
+                logger.info(f"Transfering {_r(stxt)} to {_r(dtxt)}.")
                 rc.copyfile(
                     src=src,
                     dst=dst,
@@ -172,7 +185,7 @@ class Restore:
             except Exception as EE:
                 msg = [f"ERROR: Could not restore {_r(src0)}."]
                 msg.append(f"Error: {EE}")
-                log("\n".join(msg))
+                logger.error("\n".join(msg))
                 with LOCK:
                     self.errcount += 1
 
@@ -184,7 +197,7 @@ class Restore:
 
         if self.errcount:
             msg = "ERROR: At least one restore did not work."
-            log(msg)
+            logger.info(msg)
             raise ValueError(msg)
 
 

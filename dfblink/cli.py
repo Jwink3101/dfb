@@ -112,8 +112,8 @@ def cli(argv=None):
         ],
     )
 
-    logging.debug(" argv: %s", str(argv))
-    logging.debug(" args: %s", args)
+    logging.logger.debug(" argv: %s", str(argv))
+    logging.logger.debug(" args: %s", args)
 
     try:
         dfblink(

@@ -1,18 +1,19 @@
 """
 Utilities
 """
-import os
+import os, sys
 import datetime
-from collections import namedtuple
 import sqlite3
 import random
 import subprocess
 import shlex
+import mimetypes
+import logging
+from collections import namedtuple
 
-# This can be standalone but will just use the one in rcloneapi which is designed to
-# be its own
 from .timestamps import timestamp_parser, iso8601_parser
-from . import log, debug
+
+logger = logging.getLogger(__name__)
 
 tsrep = namedtuple("timestamps", ("ts", "dt", "obj", "pretty"))
 
@@ -36,18 +37,6 @@ def time2all(dt_or_ts):
     ts = int(obj.timestamp())
     pretty = obj.astimezone().isoformat()
     return tsrep(ts, dt, obj, pretty)
-
-
-## Test to include later
-# ts = int(time.time())
-# tss = [time2all(ts)]
-# r = ts
-# for i in range(25):
-#     r0 = r
-#     alltimes = time2all(r)
-#     r = alltimes[ i % 2 ]
-#     tss.append(alltimes)
-# assert all(t == tss[0] for t in tss)
 
 
 class MyRow(sqlite3.Row):
@@ -110,28 +99,54 @@ def tabulate(table, indent=2, sep="  "):
     return "\n".join(tabulated)
 
 
-def bytes2human(byte_count, base=1024, short=True):
+def human_readable_bytes(
+    byte_count,
+    base=int(os.environ.get("DFB_BASE", 1024)),  # undocumented environment setting
+    short=True,
+    fmt=False,
+):
     """
-    Return a value,label tuple
+    Return a value,label tuple with human readable sizes or,
+    if fmt = True, return a formatted version as `{value:0.2f} {label:s}`
+
+    |        Decimal            |            Binary       |
+    | 1000    | kB | kilobyte   | 1024     KiB | kibibyte |
+    | 1000^2  | MB | megabyte   | 1024^2   MiB | mebibyte |
+    | 1000^3  | GB | gigabyte   | 1024^3   GiB | gibibyte |
+    | 1000^4  | TB | terabyte   | 1024^4   TiB | tebibyte |
+    | 1000^5  | PB | petabyte   | 1024^5   PiB | pebibyte |
+    | 1000^6  | EB | exabyte    | 1024^6   EiB | exbibyte |
+    | 1000^7  | ZB | zettabyte  | 1024^7   ZiB | zebibyte |
+    | 1000^8  | YB | yottabyte  | 1024^8   YiB | yobibyte |
+
+    Example:
+        >>> human_readable_bytes(2580417210)
+            (2.40320079959929, 'gb')
     """
     if base not in (1024, 1000):
         raise ValueError("base must be 1000 or 1024")
 
-    labels = ["kilo", "mega", "giga", "tera", "peta", "exa", "zetta", "yotta"]
-    name = "bytes"
-    if short:
-        labels = [f"{l[0].upper()}i" for l in labels]
-        name = name[0].upper()
-        # see https://www.ibm.com/docs/en/spectrum-control/5.4.2?topic=concepts-units-measurement-storage-data
-    labels.insert(0, "")
-
     best = 0
-    for ii in range(len(labels)):
+    for ii in range(9):
         if (byte_count / (base**ii * 1.0)) < 1:
             break
         best = ii
 
-    return byte_count / (base**best * 1.0), labels[best] + name
+    if base == 1000 and short:
+        labels = ["B", "kB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+    elif base == 1000 and not short:
+        labels = ["", "kilo", "mega", "giga", "tera", "peta", "exa", "zetta", "yotta"]
+        labels = [l + "byte" for l in labels]
+    elif base == 1024 and short:
+        labels = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB", "ZiB", "YiB"]
+    elif base == 1024 and not short:
+        labels = ["", "ki", "me", "gi", "te", "pe", "ex", "ze", "yo"]
+        labels = [l + "bibyte" for l in labels]
+
+    res = byte_count / (base**best * 1.0), labels[best]
+    if fmt:
+        return "{0:g} {1:s}".format(*res)
+    return res
 
 
 def shell_runner(cmds, dry=False, env=None, prefix=""):
@@ -145,19 +160,21 @@ def shell_runner(cmds, dry=False, env=None, prefix=""):
 
     kwargs = {}
 
-    prefix = [prefix] if prefix else []
+    prefix = [prefix] or []
     if dry:
         prefix.append("DRY-RUN")
 
+    prefix = ".".join(prefix)
+
     if isinstance(cmds, str):
         for line in cmds.rstrip().split("\n"):
-            log(f"$ {line}", prefix=prefix)
+            logger.info(f"{prefix}: $ {line}")
         shell = True
     elif isinstance(cmds, (list, tuple)):
-        log(f"{cmds}", prefix=prefix)
+        logger.info(f"{prefix} {cmds}")
         shell = False
     elif isinstance(cmds, dict):
-        log(f"{cmds}", prefix=prefix)
+        logger.info(f"{prefix} {cmds}")
         cmds0 = cmds.copy()
         try:
             cmds = cmds0.pop("cmd")
@@ -167,13 +184,13 @@ def shell_runner(cmds, dry=False, env=None, prefix=""):
         environ.update(cmds0.pop("env", {}))
         cmds0.pop("stdout", None)
         cmds0.pop("stderr", None)
-        debug(f"Cleaned cmd: {cmds0}")
+        logger.debug(f"Cleaned cmd: {cmds0}")
         kwargs.update(cmds0)
     else:
         raise TypeError("Shell commands must be str, list/tuple, or dict")
 
     if dry:
-        return log("DRY-RUN: Not running")
+        return logger.info("DRY-RUN: Not running")
 
     # Apply formatting. Uses the C-Style so that it is less likely to
     # have to need escaping
@@ -181,7 +198,7 @@ def shell_runner(cmds, dry=False, env=None, prefix=""):
         cmds0 = cmds.copy()
         cmds = [cmd % environ for cmd in cmds]
         if cmds != cmds0:
-            debug(f"Formatted cmds: {cmds}")
+            logger.debug(f"Formatted cmds: {cmds}")
 
     proc = subprocess.Popen(
         cmds,
@@ -197,15 +214,14 @@ def shell_runner(cmds, dry=False, env=None, prefix=""):
     out = out.rstrip("\n")
     err = err.rstrip("\n")
 
-    log(f"{out}", prefix=prefix + ["out"])
+    logger.info(f"out: {out}")
 
     if err.strip():
-        log(f"{err}", prefix=prefix + ["err"])
+        logger.info(f"err: {err}")
 
     if proc.returncode > 0:
-        log(
-            f"WARNING: Command return non-zero returncode: {proc.returncode}",
-            prefix=prefix,
+        logger.info(
+            f"{prefix} WARNING: Command return non-zero returncode: {proc.returncode}"
         )
     return proc.returncode
 
@@ -231,12 +247,6 @@ def time_format(dt, upper=False):
             res.append(f"{int(val):d}")
         res.append(label if upper else label.lower())
     return "".join(res)
-
-
-# def removeprefix(mystr, prefix):
-#     if mystr.startswith(mystr):
-#         return mystr[len(mystr) :]
-#     return mystr
 
 
 def randstr(N=15):
@@ -269,7 +279,7 @@ def dictify(mydict):
 
 
 def shell_header(config, cd=True):
-    from .rclone import RC
+    from .rclonerc import RC
 
     out = []
     if cd:
@@ -283,3 +293,114 @@ def shell_header(config, cd=True):
         out.append(f"export {key}={shlex.quote(value)}")
 
     return "\n".join(out)
+
+
+def smart_open(filename, mode="rb"):
+    filename = str(filename)
+    if filename.endswith(".gz"):
+        import gzip as gz
+
+        return gz.open(filename, mode)
+    elif filename.endswith(".xz"):
+        import lzma as xz
+
+        return xz.open(filename, mode)
+    else:
+        return open(filename, mode)
+
+
+def head_tail_table(table, /, head=None, tail=None, *, header=True, dots=False):
+    """
+    head or tail a table.
+
+    Inputs:
+    ------
+    table
+        List of lists represeting a list of rows
+
+    head [None]
+        Include the first 'head' rows. If None will not include
+        the head of the table unless tail is also None
+
+    tail [None]
+        Include the last 'tail' rows. If None, will not include
+        the tail of the table unless head is also None
+
+    header [True]
+        Exclude the header from 'head' and always return it. If
+        False, head will count the first row
+
+    dots [False]
+        If true, adds a row with '...' for all cols or a single '...'
+        if the rows are not lists. Number of cols is based on the
+        first row being a list or tuple and then its length
+    """
+    if isinstance(table[0], (list, tuple)):
+        ncol = len(table[0])
+        dotrow = [*["..."] * ncol]
+    else:
+        ncol = 0
+        dotrow = "..."
+
+    head, tail = max([0, head or 0]), max([0, tail or 0])
+
+    if head == tail == 0:
+        return table  # Nothing. Even if header
+
+    if not (head and tail):  # no dots if not both
+        dots = False
+
+    out = []
+    if header:
+        out.append(table[0])
+        table = table[1:]
+
+    ixhead = set(range(head))
+    ixtail = set(range(len(table) - tail, len(table)))
+    ixtot = ixhead.union(ixtail)
+
+    headfin = False
+    for i, row in enumerate(table):
+        # If the full table is covered, this block will never be
+        # skipped. But once it is, add the dots the first time then
+        # continue. This way you only walk the table once
+        if i in ixtot:
+            out.append(row)
+            continue
+
+        if dots and not headfin and not ixhead.intersection(ixtail):
+            out.append(dotrow)
+        headfin = True
+
+    return out
+
+
+def smart_splitext(file):
+    """
+    Split into stem,ext but allow for multiple valid extensions
+    such as .tar.gz.
+
+    Always splits the first extension but keeps going while
+    the others are valid MIME types. Never includes the first
+    part, even if leading dot
+    """
+    if not mimetypes.inited:
+        mimetypes.init()
+
+    parts = file.split(".")
+    if not parts[0]:  # leading dot
+        parts[1] = f".{parts[1]}"
+        parts = parts[1:]
+
+    if len(parts) == 1:
+        return file, ""
+
+    # Decide where to stop. This is bounded such that it will
+    # always include the first and never include the last
+    for ix in range(1, len(parts)):
+        if "." + parts[-ix - 1].lower() not in mimetypes.types_map:
+            break
+
+    stem = ".".join(parts[:-ix])
+    ext = "." + ".".join(parts[-ix:])  # No ext covered above
+    return stem, ext

@@ -5,17 +5,21 @@ import os
 from pathlib import Path
 import sqlite3
 import time
+import io
 import json
+import logging
 from functools import partialmethod
-from textwrap import dedent
+from textwrap import dedent, indent
 
-from . import __version__, log, debug, nowfun
-from .utils import time2all, MyRow, star, listify
+from . import __version__, nowfun
+from .utils import time2all, MyRow, star, listify, smart_open, randstr, smart_splitext
 from .timestamps import timestamp_parser
-from .rclone import IGNORED_FILE_DATA
+from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
 from .threadmapper import thread_map_unordered as tmap
 
 _r = repr
+
+logger = logging.getLogger(__name__)
 
 
 class NoTimestampInNameError(ValueError):
@@ -23,9 +27,10 @@ class NoTimestampInNameError(ValueError):
 
 
 def sqldebug(sql):
+    return
     sql = "\n".join(line for line in sql.split("\n") if line.strip())
     sql = dedent(sql).rstrip()
-    log(f">>>>>>>>>>>>>>> DSTDB\n{sql}\n<<<<<<<<<<<<<<<", prefix="sql", verbosity=3)
+    logger.info(f"SQL >>>>>>>>>>>>>>> DSTDB\n{sql}\n<<<<<<<<<<<<<<<")
 
 
 class DFBDST:
@@ -50,9 +55,12 @@ class DFBDST:
         self.config = config
         self.dst_rclone = dst_rclone = config._config["dst_rclone"]
 
-        dbpath = (
-            Path(dst_rclone.config_paths["Cache dir"]) / "DFB" / f"{config._uuid}.db"
-        )
+        if not (dbcache_dir := getattr(config, "dbcache_dir", None)):
+            dbcache_dir = Path(dst_rclone.config_paths["Cache dir"]) / "DFB"
+
+        self.dbcache_dir = Path(dbcache_dir)
+        dbpath = self.dbcache_dir / f"{config.config_id}.db"
+
         dbpath.parent.mkdir(exist_ok=True, parents=True)
         self.dbpath = dbpath
 
@@ -82,10 +90,10 @@ class DFBDST:
                 ).fetchall()
                 if len(r) == 2:
                     created, version = [i["val"] for i in r]
-                    debug(f"dstdb exists. {created = } {version = }")
+                    logger.debug(f"dstdb exists. {created = } {version = }")
                     return
         except:
-            debug("Recreate dstdb")
+            logger.debug("Recreate dstdb")
 
         with db:
             db.execute(
@@ -120,31 +128,45 @@ class DFBDST:
         db.commit()
         db.close()
 
-    def reset(self, stats=None):
+    def reset(self, stats=None, *, use_snapshots):
+        if self.config.disable_refresh:
+            logger.error("Refresh not allowed due to 'disable_refresh = True")
+            logger.error("Run with `--override 'disable_refresh = False'` to override")
+            raise ValueError("Refresh Disabled")
+
         self.dbpath.unlink()
         self.init()
 
-        # ALWAYS wait before an executemany since that could lock the DB
-        files = list(self._relist(stats=stats))
+        files = list(self._relist(stats=stats))  # Need them all to get snapshots
 
+        if use_snapshots:
+            self._load_snapshots()
+            files = (self._apply_snapshot_file(file) for file in files)
+
+        files = (DFBDST.dict2fullrow(file) for file in files)
+        files = list(files)  # ALWAYS wait before an executemany to not lock the DB
         with self.db() as db:
             db.executemany(
-                f"""
-                INSERT INTO items VALUES ({','.join('?' for _ in DFBDST.COLS)})""",
+                f"""INSERT INTO items 
+                    VALUES ({','.join('?' for _ in DFBDST.COLS)})""",
                 files,
             )
         db.commit()
         db.close()
 
-        # Update those with isref = 2
+        # Update those with isref = 2. Do this after full listing
         self._update_references()
 
     def _relist(self, stats=None):
+        self._snapshot_list = []
+
         config = self.config
         flags = config.dst_list_rclone_flags
 
         files = config.dst_rclone.listremote(
             mimetype=False,
+            # Notice modtime and hashes are only if needed and not using get_modtime
+            # or get_hashes
             modtime="mtime" in (config.dst_compare, config.dst_renames),
             hashes="hash" in (config.dst_compare, config.dst_renames),
             hashtypes=config.hash_type,
@@ -162,7 +184,7 @@ class DFBDST:
             try:
                 apath, ts, flag = rpath2apath(file["Path"])
             except (ValueError, NoTimestampInNameError):
-                debug(f"Could not find timestamp for {file['Path']}. Ignoring")
+                logger.error(f"Could not find timestamp for {file['Path']}. Ignoring")
                 continue
             c += 1
 
@@ -186,10 +208,10 @@ class DFBDST:
                 new[k] = v
 
             if stats and (time.time() - t0) >= stats:  # TODO TEST
-                log(f"Destination Listing Status: {c} items")
+                logger.info(f"Destination Listing Status: {c} items")
                 t0 = time.time()
 
-            yield DFBDST.dict2fullrow(new)
+            yield new
 
     def _update_references(self):
         db = self.db()
@@ -200,7 +222,7 @@ class DFBDST:
         # Multi-thread reading from the remote to get the new rpath
         # and reading from the DB to get the info
         rc = self.config.rc
-        rc.start_rc()
+        rc.start()
 
         def _get_referent(file):
             refferer = file["rpath"]
@@ -210,15 +232,15 @@ class DFBDST:
             try:
                 referent = json.loads(referent)
             except json.JSONDecodeError:
-                debug(f"Reading reference. Assuming V1")
+                logger.debug(f"Reading reference. Assuming V1")
                 referent = {"ver": 1, "path": referent}
 
             ver = referent["ver"]
             if ver == 1:
-                debug(f"Reference {_r(refferer)} is v1 (implied)")
+                logger.debug(f"Reference {_r(refferer)} is v1 (implied)")
                 return file, referent["path"]
             elif ver == 2:
-                debug(f"Reference {_r(refferer)} is v2")
+                logger.debug(f"Reference {_r(refferer)} is v2")
                 path = os.path.join(os.path.dirname(refferer), referent["rel"])
                 path = os.path.normpath(path)
                 return file, path
@@ -240,7 +262,7 @@ class DFBDST:
             if not row:
                 txt = f"WARNING: File {_r(refferer)} references {_r(referent)} "
                 txt += "but it is missing. Will just be treated as deleted"
-                log(txt, verbosity=0)
+                logger.warning(txt)
                 row = DFBDST.fullrow2dict(file)
                 row["size"] = -1
                 return row
@@ -268,6 +290,130 @@ class DFBDST:
         db.commit()
         db.close()
 
+    def _load_snapshots(self):
+        # May have to rethink this for memory but that would be a *lot* of files
+        self._snapshot_dict = {}
+
+        logger.debug("Loading snapshots from remote")
+
+        rc = self.config.rc
+        rc.start()
+
+        # Do a sync all at once so it can be threaded with rclone directly
+        params = {}
+        params["_config"] = {
+            "SizeOnly": True,  # These files shouldn't change. No need to worry about mtime
+            "UseListR": True,  # Not too many files and could be much better
+            "Transfers": self.config.concurrency,
+        }
+
+        params["srcFs"] = rcpathjoin(self.config.dst, ".dfb/snapshots")
+        snap_dest = self.dbcache_dir / self.config.config_id
+        params["dstFs"] = str(snap_dest)
+        rc.call("sync/sync", params=params)
+        logger.debug(f"sync snaps with {params = }")
+
+        for snap in sorted(snap_dest.rglob("**/*.jsonl*"), key=lambda p: p.name):
+            c = 0
+            for line in smart_open(str(snap)):
+                line = json.loads(line)
+                if line.get("_action", None) in {"prune", "comment"}:
+                    continue
+
+                if line.get("isref"):  # Must be the original, not a reference
+                    continue
+                self._snapshot_dict[line["rpath"]] = line
+                c += 1
+            logger.info(f"Loaded {c} items from {snap.name}")
+
+    def _apply_snapshot_file(self, file):
+        # References should be filled in. 2 is just a holding flag
+        if file.get("isref", 0) == 2:
+            return file
+
+        # ONLY apply if the file is listed already. Otherwise, see dbimport. This
+        # includes ignore prune entries
+        if not (snapfile := self._snapshot_dict.get(file["rpath"], None)):
+            return file
+
+        # They should be the same by rpath but just do a quick sanity check
+        if file["size"] != snapfile["size"]:
+            logger.warning(
+                f"snapshot for rpath = {_r(file['rpath'])} does not match as it should"
+            )
+            return file
+
+        # Update and reset the file
+        file |= snapfile
+        file["dstinfo"] = False
+        return file
+
+    def dbimport(self, exportfiles, reset=False):
+        if self.config.disable_refresh:
+            logger.error("DB Import not allowed due to 'disable_refresh = True")
+            logger.error("Run with `--override 'disable_refresh = False'` to override")
+            raise ValueError("Refresh Disabled")
+
+        if reset:
+            self.dbpath.unlink()
+            self.init()
+
+        rc = self.config.rc.start()
+
+        # Parallelize downloading all export files. They could have all kids of different
+        # paths including being full rclone paths so store by name with random component.
+        # Note this goes to a tmpdir, not cache dir like refresh does since these could
+        # change
+        (self.config.tmpdir / "imp").mkdir(exist_ok=False, parents=True)
+        exportfiles_dl = {e: f"{randstr(8)}.{os.path.basename(e)}" for e in exportfiles}
+
+        def _dl_export(exportfile):
+            rc.copyfile(
+                src=exportfile,
+                dst=(str(self.config.tmpdir / "imp"), exportfiles_dl[exportfile]),
+                _config={"NoCheckDest": True},
+            )
+
+        for _ in tmap(_dl_export, exportfiles_dl, Nt=self.config.concurrency):
+            pass
+
+        for exportfile in exportfiles:
+            logger.info(f"Importing from {_r(exportfile)}")
+            files = []
+            prune = []
+            local_export = self.config.tmpdir / "imp" / exportfiles_dl[exportfile]
+            with smart_open(str(local_export), "rt") as fp:
+                for line in fp:
+                    file = json.loads(line)
+                    if file.get("_action", None) == "comment":
+                        continue
+
+                    if file.get("_action", None) == "prune":
+                        prune.append(file)
+                        continue
+
+                    files.append(file)
+
+            with self.db() as db:
+                db.executemany(
+                    f"""INSERT OR REPLACE INTO items 
+                        VALUES ({','.join('?' for _ in DFBDST.COLS)})""",
+                    [DFBDST.dict2fullrow(file) for file in files],
+                )
+            msg = f"  Imported {len(files)} files"
+
+            if prune:
+                with self.db() as db:
+                    db.executemany(
+                        """
+                        DELETE FROM items 
+                        WHERE rpath = ?""",
+                        ((file["rpath"],) for file in prune),
+                    )
+                msg += f" and pruned {len(prune)}"
+
+            logger.info(msg)
+
     def insert_or_replace_many(self, files, *, insert, replace):
         """
         Allows inserting or replacing. This requires being explicit to avoid wrong
@@ -293,15 +439,27 @@ class DFBDST:
             db.executemany(sql, rows)
         db.commit()
         db.close()
+
+        with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
+            for file in files:
+                print(json.dumps(file), file=fp, flush=True)
+
         return files
 
     insert_many = partialmethod(insert_or_replace_many, insert=True, replace=False)
     replace_many = partialmethod(insert_or_replace_many, insert=False, replace=True)
 
-    def insert_or_replace(self, file, *, insert, replace, savelog=False):
+    def _insert_or_replace(self, file, *, insert, replace):
         """
         Allows inserting or replacing. This requires being explicit to avoid wrong
-        insertions
+        insertions.
+
+        These are also partialmethods defined below
+
+            Insert only: db._insert_or_replace(file,insert=True,replace=False)
+            Insert only: db._insert_or_replace(file,insert=False,replace=True)
+            both:      : db._insert_or_replace(file,insert=True,replace=True)
+
         """
         action = []
         if insert:
@@ -315,14 +473,14 @@ class DFBDST:
             db.execute(sql, DFBDST.dict2fullrow(file))
         db.commit()
 
-        if savelog:
-            with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
-                print(json.dumps(file), file=fp, flush=True)
+        with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
+            print(json.dumps(file), file=fp, flush=True)
 
         return file
 
-    insert = partialmethod(insert_or_replace, insert=True, replace=False)
-    replace = partialmethod(insert_or_replace, insert=False, replace=True)
+    insert = partialmethod(_insert_or_replace, insert=True, replace=False)
+    replace = partialmethod(_insert_or_replace, insert=False, replace=True)
+    insert_or_replace = partialmethod(_insert_or_replace, insert=True, replace=True)
 
     def snapshot(
         self,
@@ -331,6 +489,7 @@ class DFBDST:
         before=None,
         after=None,
         select="*",
+        export=False,
         remove_delete=True,
         delete_only=False,
         conditions=None,
@@ -352,6 +511,9 @@ class DFBDST:
         select
             What to return.
 
+        export [False]
+            If True, includes multiples. Will override remove_delete and delete_only
+
         remove_delete: [True]
             If False, will keep deleted items. Uses a subquery which should be faster
             than manual filtering. If used with delete_only, will get nothing.
@@ -366,35 +528,46 @@ class DFBDST:
             WARNING: Do not do ('size >= ?',0) since that will then include the non-deleted
                      version. It is better to filter it later.
         """
+        if export:
+            remove_delete = delete_only = False
+
         # Build the snapshot. Note that the select is never *user*
         # specified so there isn't an SQL injection risk
         query = [
-            f"SELECT {select if not (remove_delete or delete_only) else '*'} FROM items"
+            "SELECT",
+            # Below we make these all a subqury when using these flags so they don't need
+            # to be set here. since we will need them
+            f"{select if not (remove_delete or delete_only) else '*'}",
+            "FROM items",
         ]
 
         qvals = []
         conditions = conditions or []
 
         if path:
-            path = path.rstrip("/")
-            if path.startswith("./"):
-                path = path[2:]
+            path = path.removesuffix("/").removeprefix("./")
             conditions.append(("apath LIKE ?", f"{path}/%"))
 
         if before:
             b0 = before
             before = timestamp_parser(
-                before, aware=True, epoch=True, now=self.config.now.obj
+                before,
+                aware=True,
+                epoch=True,
+                now=self.config.now.obj,
             )
-            debug(f"Interpreted before = {b0} as {before} (s)")
+            logger.debug(f"Interpreted before = {b0} as {before} (s)")
             conditions.append(("timestamp <= ?", before))
 
         if after:
             a0 = after
             after = timestamp_parser(
-                after, aware=True, epoch=True, now=self.config.now.obj
+                after,
+                aware=True,
+                epoch=True,
+                now=self.config.now.obj,
             )
-            debug(f"Interpreted after = {a0} as {after} (s)")
+            logger.debug(f"Interpreted after = {a0} as {after} (s)")
             conditions.append(("timestamp >= ?", after))
 
         if conditions:
@@ -402,8 +575,10 @@ class DFBDST:
             query.append(" AND ".join(cond[0] for cond in conditions))
             qvals.extend(cond[1] for cond in conditions)
 
-        query.append("GROUP BY apath HAVING MAX(timestamp)")
+        if not export:
+            query.append("GROUP BY apath HAVING MAX(timestamp)")
         query.append("ORDER BY LOWER(apath)")
+
         query = "\n".join(query)
 
         outq_cond = []
@@ -411,8 +586,12 @@ class DFBDST:
             outq_cond.append("size >= 0")
         if delete_only:
             outq_cond.append("size < 0")
-        if outq_cond:
-            query = f"SELECT {select} FROM ({query}) WHERE " + " AND ".join(outq_cond)
+
+        if outq_cond:  # Make all of the above a subquery. Indent for debug readability
+            query = (
+                f"SELECT {select} FROM (\n\n{indent(query,' '*4)}\n\n) WHERE "
+                + " AND ".join(outq_cond)
+            )
 
         db = self.db()
         with db:
@@ -528,7 +707,7 @@ class DFBDST:
             before = timestamp_parser(
                 before, aware=True, epoch=True, now=self.config.now.obj
             )
-            debug(f"Interpreted before = {b0} as {before} (s)")
+            logger.debug(f"Interpreted before = {b0} as {before} (s)")
             conditions.append(("timestamp <= ?", before))
 
         if after:
@@ -536,7 +715,7 @@ class DFBDST:
             after = timestamp_parser(
                 after, aware=True, epoch=True, now=self.config.now.obj
             )
-            debug(f"Interpreted after = {a0} as {after} (s)")
+            logger.debug(f"Interpreted after = {a0} as {after} (s)")
             conditions.append(("timestamp >= ?", after))
 
         conditions0 = conditions.copy()
@@ -650,20 +829,41 @@ class DFBDST:
         db.close()
         return versions
 
-    def group_by_apath(self, select="*"):
+    def group_by_apath(self, select="*", conditions=None):
         """
         Group by apath where each group will be sorted by timestamp.
         (so you can use bisect to quickly find elements)
 
-        Can change select but MUST include apath
+        Inputs:
+        ------
+
+        select
+            What to return. MUST include 'apath'
+
+        conditions:
+            NOTE: different than in ls
+            query_txt, qvals such as
+                query_txt = "WHERE size > ? and size < ?"
+                qvals = [100,200]
+
+
         """
         db = self.db()
+
+        if conditions:
+            qtxt, qvals = conditions
+            qvals = listify(qvals)
+        else:
+            qtxt, qvals = "", []
+
         with db:
             Qres = db.execute(
                 f"""
                 SELECT {select} FROM items
+                {qtxt}
                 ORDER BY
-                    LOWER(apath),timestamp"""
+                    LOWER(apath),timestamp""",
+                qvals,
             )
             Qres = map(DFBDST.fullrow2dict, Qres)
 
@@ -685,10 +885,10 @@ class DFBDST:
 
     @classmethod
     def dict2fullrow(cls, rowdict):
+        """Take a dict of the file and convert it to a DB row"""
         rowdict = rowdict.copy()
 
-        cs = rowdict.get("checksum", None)
-        if cs:
+        if cs := rowdict.get("checksum", None):
             rowdict["checksum"] = json.dumps(cs)
 
         row = [rowdict.pop(key, None) for key, _ in cls.COLS[:-1]]
@@ -715,36 +915,40 @@ def rpath2apath(rpath):
     convert rpath ('sub/dir/file.12345.txt')
     to apath ('sub/dir/file.txt').
 
-    Does not work for reference links
+    Can handle misplaced tags too
+
 
     Returns apath, timestamp, flag
     """
     parent, name = os.path.split(rpath)
-    dot = ""
-    if name.startswith("."):
-        dot = "."
-        name = name[1:]
-    name = name.split(".")
-    if len(name) == 1:
-        raise NoTimestampInNameError(rpath)
-    if len(name) == 2:  # no extension
-        aname, ts = name
-    else:
-        *aname0, ts, ext = name
-        aname = ".".join(aname0) + f".{ext}"
-    aname = dot + aname
-    apath = os.path.join(parent, aname)
 
+    # Handle the special case of the tag at the end. This occurs
+    # if a file doesn't have an extension or was created manually (incorrectly).
+    # Otherwise, the dateflag is on the stem
+    try:
+        stem, ext = os.path.splitext(name)
+        ts, flag = parse_dateflag(ext[1:])
+        stem, ext = os.path.splitext(stem)  # Split the rest
+    except ValueError:
+        # we KNOW name doesn't end in the tag and the tag isn't a valid mime-type so
+        # it MUST be on the stem
+        stem, ext = smart_splitext(name)
+        stem, ts = os.path.splitext(stem)
+        ts, flag = parse_dateflag(ts[1:])
+
+    apath = os.path.join(parent, stem + ext)
+    return apath, ts, flag
+
+
+def parse_dateflag(ts):
     if ts[-1] in "DR":  # Delete, Reference
         flag = ts[-1]
         ts = ts[:-1]
     else:
         flag = ""
-
-    # Undocumented but it can handle any timestamp in the name
+    ts = ts.removeprefix(".")
     ts, _, _, _ = time2all(ts)
-
-    return apath, ts, flag
+    return ts, flag
 
 
 def apath2rpath(apath, ts=None, *, flag=""):
@@ -758,5 +962,5 @@ def apath2rpath(apath, ts=None, *, flag=""):
     ts = ts or nowfun()[0]
     _, dt, _, _ = time2all(ts)
 
-    base, ext = os.path.splitext(apath)
+    base, ext = smart_splitext(apath)
     return f"{base}.{dt}{flag}{ext}"

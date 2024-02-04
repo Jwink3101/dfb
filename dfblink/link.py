@@ -99,11 +99,11 @@ def dfblink(
     else:
         after = timestamp_parser(after, epoch=True)
 
-    logging.debug(f"{before = }, {after = }")
+    logging.logger.debug(f"{before = }, {after = }")
 
     mount = Path(mount).resolve()
     dest = Path(dest).resolve()
-    logging.debug(f"mount = {_rs(mount)}, dest = {_rs(dest)}")
+    logging.logger.debug(f"mount = {_rs(mount)}, dest = {_rs(dest)}")
 
     dest.mkdir(exist_ok=True, parents=True)
     if not allow_non_empty and any(dest.iterdir()):
@@ -113,7 +113,7 @@ def dfblink(
         rel = os.path.relpath(root, mount)
         depth = rel.count("/") + 1 if rel != "." else 0
         if maxdepth is not None and depth > maxdepth:
-            logging.debug("max depth hit")
+            logging.logger.debug("max depth hit")
             del dirs[:]  # Do not go deeper
             continue
 
@@ -130,10 +130,10 @@ def dfblink(
                 ts = after  # always keep it but give it the lowest value
 
             if ts > before:
-                logging.debug(f"File {_rs(rpath)} is too new. Skipped")
+                logging.logger.debug(f"File {_rs(rpath)} is too new. Skipped")
                 continue
             if ts < after:
-                logging.debug(f"File {_rs(rpath)} is too old. Skipped")
+                logging.logger.debug(f"File {_rs(rpath)} is too old. Skipped")
                 continue
 
             apaths[apath].append((ts, rpath, flag))
@@ -176,7 +176,7 @@ def dfblink(
                     raise ValueError("Unrecognized ref format")
 
             if dst.exists():
-                logging.debug(f"{_rs(dst)} exists")
+                logging.logger.debug(f"{_rs(dst)} exists")
                 if force_overwrite:
                     dst.unlink()
                 else:

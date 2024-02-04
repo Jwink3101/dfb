@@ -2,6 +2,51 @@
 
 (newest on top)
 
+## 20240204.0
+
+**BIG UPDATE**
+
+This has some breaking changes. Please be careful.
+
+- Adds `--export` to snapshot command
+- Adds `--dump` to the backup and prune command. This is like the (now removed) shell script but includes more information.
+- Adds `advanced dbimport` to allow you to import from an export. These two commands make it doable (though advanced) to use [cold or archival storage](cold_storage.md).
+- `refresh` now downloads all snapshots and uses that to update the destination listing. These files are **secondary** to the actual listing (i.e. only used to update if possible). Note that this can be disabled with the flag `--no-refresh-use-snapshots` or `--no-use-snapshots` (depending on the command).
+- Adds `--after` and `--only` to restore commands. Now you can restore only within a specific window
+- Adds `--head` and `--tail` to listing commands
+- **Important**: Adds `'auto'` for many compare attributes and makes them the default. Cleans up the config.
+    - It is *strongly* suggested to redo your config to match the new format but the old will work just fine.
+- **Potentially Breaking** (at least for some workflows): `--shell-script` for *uploads* are no longer a thing.
+- **Potentially Breaking**: While `fail_shell` will still be called if the entire run fails, errors in uploads will get logged but are not explicitly going to make it get called.
+- **Potentially Breaking**: Removed `reuse_hashes`. Please use [hasher remote](https://rclone.org/hasher/) for local hashing
+- **Important**: Implemented a smarter extension splitting algorithm that more closely matches rclone's. After splitting the first extension, the remaining ones are also split iff they are valid MIME types. This means that files like `archive.tar.gz` will now become `archive.20240126094501.tar.gz` whereas before, it would be `archive.tar.20240126094501.gz`. Note that both will parse properly for existing files but going forward, new versions will use the updated split. When browsing the backup files directly, you may see both from before the split. 
+    - Also made the date determination more robust for any manually placed files.
+- **Potentially breaking**: Removed a few options in favor of being a bit more opinionated:
+    - Always upload snapshots (in compressed form) -- These are also now automatically used to enhance refresh (Optional). 
+        - Also uploads to dated dirs (but will download properly upon refresh for old ones)
+    - Always upload logs
+    - Stats settings
+
+Prune:
+
+- Adds `advanced prune-file` to manually prune files (and anything that references them)
+- Made prune a bit more agressive at removing orphaned delete markers
+- (*bug fix*) Prune now removes the reference files when it should. Previously, it would keep them and not be able to find the references upon refresh or restore. This wasn't critical because the broken reference *should* have been pruned!
+- (*bug fix*) When using prune with `--subdir`, prune would *erroneously* remove referent files that were still being used outside of the subdir. 
+- prune is now both more performant and uses less memory. (bonus in fixing the above)
+    
+Minor:
+
+- Moved to Python logging
+- Made `dfb.rclonerc` a bit more library-like.
+- Try to avoid single-line help when executing config.
+- Correct usage of size labels (e.g. MB vs MiB)
+- Documentation of mtimes on restore
+- More documentation moved to [docs](readme.md)
+- Minor fix in logs for restore
+- Moved from `_uuid` in config to `config_id` (with a different default) but will cleanly fall back to `_uuid` so nothing breaks
+- Lots of code cleanup and documentation
+
 ## 20240106.0
 
 - Added documentation that dfb-mount needs libfuse2 and will not work on libfuse3.

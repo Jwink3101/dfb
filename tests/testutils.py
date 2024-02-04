@@ -1,4 +1,5 @@
 import os, sys
+import io
 import shutil
 from pathlib import Path
 import datetime, time
@@ -16,11 +17,27 @@ if p not in sys.path:
 import dfb.configuration
 import dfb.cli
 import dfb.dstdb
-from dfb.rcloneapi import Rclone as RcloneAPI
+from dfb.rclonecli import RcloneCLI as RcloneAPI
 
 _r = repr
 
 dfb.cli._TESTMODE = True
+
+
+class Capture:
+    def __init__(self):
+        return
+
+    def __enter__(self):
+        self._out, self._err = sys.stdout, sys.stderr
+        sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+        return self
+
+    def __exit__(self, *_):
+        self.out = sys.stdout.getvalue()
+        self.err = sys.stderr.getvalue()
+        sys.stdout, sys.stderr = self._out, self._err
+        return self
 
 
 class Tester:
@@ -51,7 +68,7 @@ class Tester:
                 "RCLONE_PASSWORD_COMMAND": RcloneAPI.DELENV,
                 "RCLONE_CONFIG": str(self.pwd / "rclone.cfg"),
             },
-            "_uuid": f"test_{name}",
+            "config_id": f"test_{name}",
         }
         self.configfile = str(self.pwd / "config.py")
 
@@ -79,6 +96,7 @@ class Tester:
 
         self.config_obj = dfb.configuration.Config(self.configfile).parse()
         self.dstdb = dfb.dstdb.DFBDST(self.config_obj)
+        return self.config_obj
 
     def call(self, cmd0, *args, offset=None):
         """Call with a specified config and offset"""
@@ -86,10 +104,10 @@ class Tester:
             offset = 2 * len(self.logs) + 1
         dfb._override_offset = offset
 
-        r = dfb.cli.cli([cmd0, "--config", self.configfile] + list(args))
+        r = dfb.cli.cli([cmd0, *args, "--config", self.configfile])
 
-        logfile = self.config_obj.log0.log_file.resolve()
-        debugfile = self.config_obj.log0.debug_file.resolve()
+        logfile = self.config_obj.logfile.resolve()
+        debugfile = self.config_obj.debuglogfile.resolve()
 
         tt = time.time_ns() // 1000
 
@@ -109,6 +127,13 @@ class Tester:
 
         self.logs.append((logtext, debugtext))
         return r
+
+    def ls(self, *cmd, **kw):
+        with Capture() as cap:
+            self.call("ls", *cmd, **kw)
+        out = cap.out
+        print(out)
+        return out
 
     def backup(self, *args, offset=None, allow_error=False):
         backobj = self.call("backup", *args, offset=offset)
@@ -253,14 +278,34 @@ def change_time(path, time_adj):
     os.utime(path, (stat.st_atime + time_adj, stat.st_mtime + time_adj))
 
 
-def tree(path):
+def tree(path, hidden=False):
     files = []
     for dirpath, dirnames, filenames in os.walk(path, followlinks=True):
         exc = {".DS_Store"}
-        files.extend(
-            os.path.join(dirpath, filename)
-            for filename in filenames
-            if filename not in exc
-        )
+        filenames = [f for f in filenames if f not in exc]
+        if not hidden:
+            filenames[:] = [f for f in filenames if not f.startswith(".")]
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+
+        filenames.sort(key=str.lower)
+        dirnames.sort(key=str.lower)
+
+        files.extend(os.path.join(dirpath, filename) for filename in filenames)
 
     return files
+
+
+def dict2frozen(item):
+    if isinstance(item, dict):
+        return frozenset((k, dict2frozen(v)) for k, v in item.items())
+    if isinstance(item, list):
+        return tuple(dict2frozen(i) for i in item)
+    if isinstance(item, set):
+        return frozenset(item)
+    return item
+
+
+def venn(A, B):
+    A = set(A)
+    B = set(B)
+    return {"A": A - B, "A∩B": A.intersection(B), "B": B - A}

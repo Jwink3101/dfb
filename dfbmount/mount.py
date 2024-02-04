@@ -283,7 +283,7 @@ epilog = """\
 Note on Mounting
 ----------------
 This is a thin wrapper around a simple loop-back file system pointed to the dfb
-destination. Rclone's mounting capabilities is significantly more powerful so this
+destination. RcloneCLI's mounting capabilities is significantly more powerful so this
 lets rclone manage the files and just wraps that mount. This is also read-only so it
 makes sense to also have the rclone mount be read-only.
 

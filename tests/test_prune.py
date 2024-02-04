@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys
+import os, sys, shutil
 from pathlib import Path
 import gzip as gz
 import subprocess
@@ -11,6 +11,9 @@ from textwrap import dedent
 p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
+
+from dfb.prune import BrokenReferenceError
+
 
 # Local
 import testutils
@@ -38,7 +41,6 @@ def test_basic_cases():
 
     # + tags=[]
     test.config["renames"] = False
-    test.config["reuse_hashes"] = False
     test.config["compare"] = "hash"
     test.write_config()
     vq = ["-q"]
@@ -71,39 +73,44 @@ def test_basic_cases():
     test.backup(*vq, offset=7)
 
     # + tags=[]
-    prune = test.call("prune", "--dry-run", "u2", *vq)
+    prune = test.call("prune", "--dry-run", "u2", *vq, offset=9)
     assert set(prune.rpaths) == set()
 
     # + tags=[]
-    prune = test.call("prune", "--dry-run", "u4", *vq)
+    prune = test.call("prune", "--dry-run", "u4", *vq, offset=11)
     assert set(prune.rpaths) == {
         ("del3.19700101000001.txt", 4),
+        ("del3.19700101000003D.txt", -1),
         ("dm5.19700101000001.txt", 3),
         ("dm7.19700101000001.txt", 3),
         ("mix.19700101000001.txt", 3),
     }
     # -
 
-    prune = test.call("prune", "--dry-run", "u6", *vq)
+    prune = test.call("prune", "--dry-run", "u6", *vq, offset=13)
     assert set(prune.rpaths) == {
         ("del3.19700101000001.txt", 4),
-        # Theoretically could have del3.19700101000003D.txt but this is missed as per the note
+        ("del3.19700101000003D.txt", -1),
         ("del5.19700101000001.txt", 4),
+        ("del5.19700101000005D.txt", -1),
         ("dm5.19700101000001.txt", 3),
         ("dm5.19700101000003.txt", 5),
+        ("dm5.19700101000005D.txt", -1),
         ("dm7.19700101000001.txt", 3),
         ("dm7.19700101000003.txt", 5),
         ("mix.19700101000001.txt", 3),
         ("mix.19700101000003D.txt", -1),  # Example of 2C delete
     }
 
-    prune = test.call("prune", "--dry-run", "u8", *vq)
+    prune = test.call("prune", "--dry-run", "u8", *vq, offset=15)
     assert set(prune.rpaths) == {
         ("del3.19700101000001.txt", 4),
-        # Theoretically could have del3.19700101000003D.txt but this is missed as per the note
+        ("del3.19700101000003D.txt", -1),
         ("del5.19700101000001.txt", 4),
+        ("del5.19700101000005D.txt", -1),
         ("dm5.19700101000001.txt", 3),
         ("dm5.19700101000003.txt", 5),
+        ("dm5.19700101000005D.txt", -1),
         ("dm7.19700101000001.txt", 3),
         ("dm7.19700101000003.txt", 5),
         ("mix.19700101000001.txt", 3),
@@ -111,25 +118,31 @@ def test_basic_cases():
     }.union(  # These are now removable
         {
             ("del7.19700101000001.txt", 4),
+            ("del7.19700101000007D.txt", -1),
             ("dm7.19700101000005.txt", 5),
+            ("dm7.19700101000007D.txt", -1),
             ("mix.19700101000005.txt", 4),
+            ("mix.19700101000007D.txt", -1),
         }
     )
 
     # Now do it for real. They should result is a different group but they should build on the differences
 
-    prune = test.call("prune", "u2", *vq)
+    prune = test.call("prune", "u2", *vq, offset=17)
 
     # Should be the same
-    prune = test.call("prune", "u4", *vq)
+    prune = test.call("prune", "u4", *vq, offset=19)
 
-    prune = test.call("prune", "u6", *vq)
+    prune = test.call("prune", "u6", *vq, offset=21)
     assert set(prune.rpaths) == (
         {  # above's u6
             ("del3.19700101000001.txt", 4),
+            ("del3.19700101000003D.txt", -1),
             ("del5.19700101000001.txt", 4),
+            ("del5.19700101000005D.txt", -1),
             ("dm5.19700101000001.txt", 3),
             ("dm5.19700101000003.txt", 5),
+            ("dm5.19700101000005D.txt", -1),
             ("dm7.19700101000001.txt", 3),
             ("dm7.19700101000003.txt", 5),
             ("mix.19700101000001.txt", 3),
@@ -137,18 +150,32 @@ def test_basic_cases():
         }
         - {
             ("del3.19700101000001.txt", 4),
+            ("del3.19700101000003D.txt", -1),
             ("dm5.19700101000001.txt", 3),
             ("dm7.19700101000001.txt", 3),
             ("mix.19700101000001.txt", 3),
         }
     )
 
-    prune = test.call("prune", "--dry-run", "u8", *vq)
+    prune = test.call("prune", "--dry-run", "u8", *vq, offset=23)
     assert set(prune.rpaths) == {
         ("del7.19700101000001.txt", 4),
+        ("del7.19700101000007D.txt", -1),
         ("dm7.19700101000005.txt", 5),
+        ("dm7.19700101000007D.txt", -1),
         ("mix.19700101000005.txt", 4),
+        ("mix.19700101000007D.txt", -1),
     }
+
+    # Test import with prune
+    test.call("refresh")
+    cmd = [
+        "advanced",
+        "dbimport",
+        "-v",
+        *sorted(str(p) for p in Path("dst/.dfb/snapshots/").glob("*.jsonl*")),
+    ]
+    test.call(*cmd)
 
 
 def test_moves():
@@ -175,7 +202,6 @@ def test_moves():
 
     # + tags=[]
     test.config["renames"] = "hash"
-    test.config["reuse_hashes"] = False
     test.config["compare"] = "hash"
     test.write_config()
     vq = ["-q"]
@@ -222,11 +248,10 @@ def test_moves():
     # + tags=[]
     prune = test.call("prune", "--dry-run", "u10", *vq)
     assert set(prune.rpaths) == {
+        ("f2.19700101000007R.txt", 0),  # reference get deleted too
         ("f0.19700101000003D.txt", -1),  # From above
-        (
-            "f0.19700101000005.txt",
-            4,
-        ),  # Now  blocked by 7D and no longer referecned by f2.7!
+        # Now  blocked by 7D and no longer referecned by f2.7!
+        ("f0.19700101000005.txt", 4),
     }
 
     # + tags=[]
@@ -234,7 +259,9 @@ def test_moves():
     assert set(prune.rpaths) == {
         ("f0.19700101000003D.txt", -1),  # From above
         ("f0.19700101000005.txt", 4),  # Now  blocked by 7D
+        ("f0.19700101000007D.txt", -1),
         ("f0.19700101000009.txt", 4),
+        ("f2.19700101000007R.txt", 0),
         ("f2.19700101000009.txt", 3),
     }
     # -
@@ -269,13 +296,14 @@ def test_modes():
     # test.call('prune','u6','-i')
     # -
 
-    prune = test.call("prune", "u6", "--shell-script", "-")
-    print(prune.rpaths)
 
-    prune = test.call("prune", "u6", "--shell-script", "prune.sh")
-    print(prune.rpaths)
-    with open("prune.sh") as fp:
-        print(fp.read())
+#     prune = test.call("prune", "u6", "--shell-script", "-")
+#     print(prune.rpaths)
+#
+#     prune = test.call("prune", "u6", "--shell-script", "prune.sh")
+#     print(prune.rpaths)
+#     with open("prune.sh") as fp:
+#         print(fp.read())
 
 
 def test_subdir():
@@ -315,15 +343,23 @@ def test_subdir():
         == set()
     )
 
-    assert set(
-        test.call("prune", "--dry-run", "u8", "--subdir", "sub2", *vq).rpaths
-    ) == {("sub2/move_at_5.19700101000001.txt", 9)}
-    assert set(test.call("prune", "--dry-run", "u8", *vq).rpaths) == {
+    prune = test.call("prune", "--dry-run", "u8", "--subdir", "sub2", *vq)
+    assert set(prune.rpaths) == set()
+    # WARNING this used to be
+    #    ("sub2/move_at_5.19700101000001.txt", 9),
+    #    ("sub2/move_at_5.19700101000005D.txt", -1),
+    # but this is WRONG! Since we aren't pruning outside of subdir, those references
+    # need to remain! This was a bug and a bad test
+
+    prune = test.call("prune", "--dry-run", "u8", *vq)
+    assert set(prune.rpaths) == {
         ("mod.19700101000003.txt", 11),
         ("sub1/mod_sub.19700101000001.txt", 17),
         ("mod.19700101000001.txt", 10),
+        ("new/NEW.19700101000005R.txt", 0),
         ("sub1/mod_sub.19700101000003.txt", 18),
         ("sub2/move_at_5.19700101000001.txt", 9),
+        ("sub2/move_at_5.19700101000005D.txt", -1),
     }
 
 
@@ -343,25 +379,31 @@ def test_disable():
     prune = test.call("prune", "--dry-run", "u4")
     assert set(prune.rpaths) == {
         ("to_del.19700101000001.txt", 3),
+        ("to_del.19700101000003D.txt", -1),
         ("file.19700101000001.txt", 4),
     }
     assert os.path.exists("dst/to_del.19700101000001.txt")
+    assert os.path.exists("dst/to_del.19700101000003D.txt")
     assert os.path.exists("dst/file.19700101000001.txt")
 
     prune = test.call("prune", "u4")
     assert set(prune.rpaths) == {
         ("to_del.19700101000001.txt", 3),
+        ("to_del.19700101000003D.txt", -1),
         ("file.19700101000001.txt", 4),
     }
     assert os.path.exists("dst/to_del.19700101000001.txt")
+    assert os.path.exists("dst/to_del.19700101000003D.txt")
     assert os.path.exists("dst/file.19700101000001.txt")
 
     prune = test.call("prune", "u4", "--override", "disable_prune = False")
     assert set(prune.rpaths) == {
         ("to_del.19700101000001.txt", 3),
+        ("to_del.19700101000003D.txt", -1),
         ("file.19700101000001.txt", 4),
     }
     assert not os.path.exists("dst/to_del.19700101000001.txt")
+    assert not os.path.exists("dst/to_del.19700101000003D.txt")
     assert not os.path.exists("dst/file.19700101000001.txt")
 
 
@@ -388,6 +430,7 @@ def test_basic_versions():
 
     assert set(test.call("prune", "now", "-n").rpaths) == {
         ("del.19700101000001.txt", 3),
+        ("del.19700101000003D.txt", -1),
         ("mod_all.19700101000001.txt", 1),
         ("mod_all.19700101000003.txt", 2),
         ("mod_all.19700101000005.txt", 3),
@@ -402,34 +445,102 @@ def test_basic_versions():
         ("mod_all.19700101000001.txt", 1),
     }
 
-    # Forward in time. Remove the
+    # Forward in time.
     assert set(test.call("prune", "u-1", "-N", "-2", "-n").rpaths) == {
         ("del.19700101000001.txt", 3),
+        ("del.19700101000003D.txt", -1),
         ("mod_all.19700101000001.txt", 1),
     }
 
     # Make sure you can't go beyond the latest
     assert set(test.call("prune", "now", "-N", "-200", "-n").rpaths) == {
         ("del.19700101000001.txt", 3),
+        ("del.19700101000003D.txt", -1),
         ("mod_all.19700101000001.txt", 1),
         ("mod_all.19700101000003.txt", 2),
         ("mod_all.19700101000005.txt", 3),
     }
     assert set(test.call("prune", "u0", "-N", "-200", "-n").rpaths) == {
         ("del.19700101000001.txt", 3),
+        ("del.19700101000003D.txt", -1),
         ("mod_all.19700101000001.txt", 1),
         ("mod_all.19700101000003.txt", 2),
         ("mod_all.19700101000005.txt", 3),
     }
 
 
+def test_prune_file():
+    test = testutils.Tester(name="prune_file")
+    test.config["rename_method"] = "reference"
+    test.write_config()
+
+    test.write_pre("src/mod.txt", ".")
+    test.write_pre("src/keep.txt", "keep")
+    test.write_pre("src/move0.txt", "mv0")
+
+    test.backup(offset=1)
+
+    test.write_post("src/mod.txt", "..")
+    shutil.move("src/move0.txt", "src/move1.txt")
+
+    test.backup(offset=3)
+
+    test.write_post("src/mod.txt", "...")
+    shutil.move("src/move1.txt", "src/move2.txt")
+
+    test.backup(offset=5)
+
+    # Check modes
+    try:
+        test.call(
+            "advanced", "prune-file", "move0.19700101000001.txt", "-v", "--dry-run"
+        )
+        assert False
+    except BrokenReferenceError:
+        pass
+
+    prune = test.call(
+        "advanced",
+        "prune-file",
+        "move0.19700101000001.txt",
+        "--dry-run",
+        "--no-error-if-referenced",
+    )
+    assert prune.rpaths == {
+        ("move1.19700101000003R.txt", 0),
+        ("move0.19700101000001.txt", 3),
+        ("move2.19700101000005R.txt", 0),
+    }
+
+    for path in (
+        "move1.19700101000003R.txt",
+        "move0.19700101000001.txt",
+        "move2.19700101000005R.txt",
+    ):
+        assert (test.pwd / "dst" / path).exists()
+    # Now do the prune for real and verify
+    prune = test.call(
+        "advanced",
+        "prune-file",
+        "move0.19700101000001.txt",
+        "--no-error-if-referenced",
+    )
+    for path in (
+        "move1.19700101000003R.txt",
+        "move0.19700101000001.txt",
+        "move2.19700101000005R.txt",
+    ):
+        assert not (test.pwd / "dst" / path).exists()
+
+
 if __name__ == "__main__":
-    #     test_basic_cases()
-    #     test_moves()
-    #     test_modes()
-    #     test_subdir()
-    #     test_disable()
+    test_basic_cases()
+    test_moves()
+    test_modes()
+    test_subdir()
+    test_disable()
     test_basic_versions()
+    test_prune_file()
 
     print("=" * 50)
     print(" All Passed ".center(50, "="))

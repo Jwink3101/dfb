@@ -1,10 +1,13 @@
 import os, sys
 import argparse
+import logging
+from textwrap import dedent
 from functools import partial
 
-from . import log, debug, __version__, __git_version__
+from . import __version__, __git_version__
 
 _r = repr
+logger = logging.getLogger(__name__)
 
 _TESTMODE = False
 
@@ -16,20 +19,22 @@ ISODATEHELP = """
     or without spaces, colons, dashes, "T", etc. Can optionally
     specify a numeric time zone (e.g. -05:00) or 'Z'. If no timezone is specified, 
     it is assumed *local* time. Alternatively, can specify unix time with a preceding
-    'u'. Example: 'u1678560662'. Or can specify a time difference from the current
+    'u' (e.g. 'u1678560662'). Or can specify a time difference from the current
     time with any (and only) of the following: second[s], minute[s], hour[s], day[s], 
     week[s]. Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). 
     Can also specify "now" for the current time.
     """
 
 
-# THis lets me control how argparse exits.
+# This lets me control how argparse exits.
 # https://stackoverflow.com/a/14728477
 class ThrowingArgumentParserError(Exception):
     pass
 
 
 class ThrowingArgumentParser(argparse.ArgumentParser):
+    """Like regular argument parser but throws an exception"""
+
     def error(self, message):
         self.print_usage(sys.stderr)
         args = {"prog": self.prog, "message": message}
@@ -97,47 +102,92 @@ def parse(argv=None, shebanged=False):
     global_group.add_argument(
         "--temp-dir", help="Specify a temp dir. Otherwise will use Python's default"
     )
-    global_group.add_argument(
-        "--_return-config", action="store_true", help=argparse.SUPPRESS
-    )
+    #     global_group.add_argument(
+    #         "--_return-config", action="store_true", help=argparse.SUPPRESS
+    #     )
 
-    restore_parent = argparse.ArgumentParser(add_help=False)
-    restore_parent.add_argument(
+    when_parent = argparse.ArgumentParser(add_help=False)
+    when_group = when_parent.add_argument_group(
+        title="Time Specification", description=f"All TIMESTAMPs: {ISODATEHELP}"
+    )
+    when_group.add_argument(
         "--at",
         "--before",
-        dest="at",
+        dest="before",
         metavar="TIMESTAMP",
-        help=f"""Timestamp for the file to restore. {ISODATEHELP}""",
+        help=f"""
+            Timestamp at which to show the files. If not specified, will be the latest.
+            Note that if '--after' is set, this will not be the full snapshot in time.
+            """,
     )
+    when_group.add_argument(
+        "--after",
+        metavar="TIMESTAMP",
+        help=f"""
+            Only show files after the specified time. Note that this means the '--at' will
+            not be the full snapshot.
+            """,
+    )
+
+    when_group.add_argument(
+        "--only",
+        metavar="TIMESTAMP",
+        help=f"""
+            Only show files AT the specified time. 
+            Shortcut for '--before TIMESTAMP --after TIMESTAMP' since both are inclusive.
+            Useful if the exact timestamp is known such as from the 'timestamps' command.
+            """,
+    )
+    restore_parent = argparse.ArgumentParser(add_help=False, parents=[when_parent])
     restore_parent.add_argument(
         "--no-check",
         action="store_true",
         help="Disable rclone comparing the source and the dest. If set, will restore everything",
     )
 
-    exe_parent = argparse.ArgumentParser(add_help=False)
-    exe_group = exe_parent.add_argument_group(
-        title="Execution Settings",
-        description="Precedance follows the order specified in this help",
-    )
-    # exe_group = exe_group0.add_mutually_exclusive_group()
-    exe_group.add_argument(
-        "-n", "--dry-run", action="store_true", help="Do not execute any changes"
-    )
-    exe_group.add_argument(
-        "-i",
-        "--interactive",
-        action="store_true",
-        help="Display planned actions and prompt to continue or stop",
-    )
-    exe_group.add_argument(
+    exe_shell_parent = argparse.ArgumentParser(add_help=False)
+    exe_dump_parent = argparse.ArgumentParser(add_help=False)
+
+    exe_groups = []
+    for par in (exe_shell_parent, exe_dump_parent):
+        pargroup = par.add_argument_group(
+            title="Execution Settings",
+            description="Precedance follows the order specified in this help",
+        )
+        # dry_int_group = dry_int_group0.add_mutually_exclusive_group()
+        pargroup.add_argument(
+            "-n", "--dry-run", action="store_true", help="Do not execute any changes"
+        )
+        pargroup.add_argument(
+            "-i",
+            "--interactive",
+            action="store_true",
+            help="Display planned actions and prompt to continue or stop",
+        )
+
+        exe_groups.append(pargroup)
+
+    exe_groups[0].add_argument(  # onto exe_shell_parent
         "--shell-script",
-        metavar="DEST or -",
+        metavar="FILE or -",
         help="""
             Rather than call rclone from within '%(prog)s', instead generate
             a shell script at %(metavar)s that will perform the same actions.
             This is useful to verify behavior and modify as needed. Note that
             this may not be perfect but should be close. Can specify "-" to print script
+            """,
+    )
+
+    exe_groups[1].add_argument(  # onto exe_dump_parent
+        "--dump",
+        metavar="FILE or -",
+        help="""
+            ADVANCED USAGE. Will dump the JSONL data that represents the backup or prune. 
+            This can be used to manually do the action and then with 
+            `dfb advanced dbimport` to apply. Note that this is a more advanced
+            form of --dry-run. If FILE ends in '.gz' or '.xz', it will be
+            compressed respectively. 
+            Can specify "-" to print the dump to stdout.
             """,
     )
 
@@ -189,7 +239,7 @@ def parse(argv=None, shebanged=False):
 
     backup = subparsers["backup"] = subpar.add_parser(
         "backup",
-        parents=[global_parent, config_global, exe_parent],
+        parents=[global_parent, config_global, exe_dump_parent],
         help="Run a backup",
     )
     backup.add_argument(
@@ -217,6 +267,17 @@ def parse(argv=None, shebanged=False):
             instead of 'compare'. This is the same as running `refresh` command but
             will list simultaneously.""",
     )
+    backup.add_argument(
+        "--refresh-use-snapshots",
+        action=argparse.BooleanOptionalAction,
+        dest="use_snapshots",
+        default=True,
+        help="""
+            Whether or not to also download snapshots from the destination and
+            update metadata. Note that the snapshots are _secondary_. They are
+            not needed but enable src-to-src comparisons immediately after refresh
+            """,
+    )
 
     #################################################
     ## Backup
@@ -231,8 +292,16 @@ def parse(argv=None, shebanged=False):
             can be used outside of a backup
             """,
     )
-
-    # Future: Add ways to restore from file lists. For now, it *must* just list.
+    refresh.add_argument(
+        "--use-snapshots",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="""
+            Whether or not to also download snapshots from the destination and
+            update metadata. Note that the snapshots are _secondary_. They are
+            not needed but enable src-to-src comparisons immediately after refresh
+            """,
+    )
 
     #################################################
     ## restore-dir
@@ -241,7 +310,7 @@ def parse(argv=None, shebanged=False):
     restore_dir = subparsers["restore-dir"] = subpar.add_parser(
         "restore-dir",
         aliases=["restore"],  # Need to reset below
-        parents=[global_parent, config_global, restore_parent, exe_parent],
+        parents=[global_parent, config_global, restore_parent, exe_shell_parent],
         help=_h,
         description=_h,
     )
@@ -268,7 +337,7 @@ def parse(argv=None, shebanged=False):
 
     restore_file = subparsers["restore-file"] = subpar.add_parser(
         "restore-file",
-        parents=[global_parent, config_global, restore_parent, exe_parent],
+        parents=[global_parent, config_global, restore_parent, exe_shell_parent],
         help="Restore a file to a specified location, file, or to stdout",
     )
 
@@ -298,50 +367,34 @@ def parse(argv=None, shebanged=False):
     #################################################
     ## File List
     #################################################
-    list_parent = argparse.ArgumentParser(add_help=False)
-
-    when_group = list_parent.add_argument_group(
-        title="Time Specification", description=f"All TIMESTAMPs: {ISODATEHELP}"
-    )
-    when_group.add_argument(
-        "--at",
-        "--before",
-        dest="before",
-        metavar="TIMESTAMP",
-        help=f"""
-            Timestamp at which to show the files. If not specified, will be the latest.
-            Note that if '--after' is set, this will not be the full snapshot in time.
-            """,
-    )
-    when_group.add_argument(
-        "--after",
-        metavar="TIMESTAMP",
-        help=f"""
-            Only show files after the specified time. Note that this means the '--at' will
-            not be the full snapshot.
-            """,
-    )
-
-    when_group.add_argument(
-        "--only",
-        metavar="TIMESTAMP",
-        help=f"""
-            Only show files AT the specified time. 
-            Shortcut for '--before TIMESTAMP --after TIMESTAMP' since both are inclusive.
-            Useful if the exact timestamp is known such as from the 'timestamps' command.
-            """,
-    )
+    list_parent = argparse.ArgumentParser(add_help=False, parents=[when_parent])
 
     list_parent.add_argument(
         "path", default="", nargs="?", help="Starting path. Defaults to the top"
     )
 
+    # Setting for listings
     list_parent_settings = argparse.ArgumentParser(add_help=False)
     list_group = list_parent_settings.add_argument_group(title="Listing Settings")
     list_group.add_argument(
-        "--no-header",
-        action="store_true",
-        help="Disable headers where applicable",
+        "--header",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Print a header where applicable",
+    )
+    list_group.add_argument(
+        "--head",
+        default=None,
+        type=int,
+        metavar="N",
+        help="Include the first %(metavar)s lines plus --tail (if set).",
+    )
+    list_group.add_argument(
+        "--tail",
+        default=None,
+        type=int,
+        metavar="N",
+        help="Include --head (if set) plus the last %(metavar)s lines.",
     )
     list_group.add_argument(
         "--human",
@@ -390,10 +443,11 @@ def parse(argv=None, shebanged=False):
     snap = subparsers["lsnaps"] = subpar.add_parser(
         "snapshot",
         parents=[global_parent, list_parent, config_global],
-        help="Recursivly list the files in line-delineated JSON at the optionally specified time",
+        help="Recursivly list the files in line-delimited JSON at the optionally specified time",
     )
 
-    snap.add_argument(
+    de_group = snap.add_mutually_exclusive_group()
+    de_group.add_argument(
         "-d",
         "--deleted",
         "--del",
@@ -403,6 +457,12 @@ def parse(argv=None, shebanged=False):
         help="""
             List deleted files as well.  
             Specify twice to ONLY include deleted files""",
+    )
+    de_group.add_argument(
+        "-e",
+        "--export",
+        action="store_true",
+        help="Export mode. Includes _all_ entries, not just the final one. Ignored",
     )
     snap.add_argument(
         "--output",
@@ -425,6 +485,8 @@ def parse(argv=None, shebanged=False):
     )
     versions.add_argument(
         "--real-path",
+        "--rpath",
+        dest="real_path",
         action="count",
         default=0,
         help="Include *full* real path of the file. Specify twice to include the rclone path",
@@ -450,7 +512,7 @@ def parse(argv=None, shebanged=False):
             algorithm may miss some delete makers that technically could be deleted but
             it is more efficient not to try to identify them.
         """,
-        parents=[global_parent, config_global, exe_parent],
+        parents=[global_parent, config_global, exe_dump_parent],
         help="Prune older versions of the files",
     )
     prune.add_argument(
@@ -488,7 +550,82 @@ def parse(argv=None, shebanged=False):
             major performance enhancement.
             """,
     )
+    #################################################
+    ## Advanced Subparser
+    #################################################
+    adv = subparsers["adv"] = subpar.add_parser(
+        "advanced",
+        help="Advanced Functions. Run `%(prog)s advanced -h` for help",
+    )
 
+    subparsers["adv_main"] = adv_subpar = adv.add_subparsers(
+        dest="command",
+        title="Commands",
+        required=True,
+        metavar="command",
+        description="Run `%(prog)s <command> -h` for help",
+    )
+
+    #################################################
+    ## Advanced-Import
+    #################################################
+
+    dbimport = subparsers["dbimport"] = adv_subpar.add_parser(
+        "dbimport",
+        parents=[global_parent, config_global],
+        help="Import an exported list",
+        description="""
+            [ADVANCED] Import file(s) and append to database. 
+            Will overwrite any existing data if applicable.
+            """,
+    )
+
+    dbimport.add_argument(
+        "files",
+        nargs="*",
+        help="""File(s) to import. Can be any rclone path including local. 
+                Will automatically decompress .gz or .xz files""",
+    )
+
+    dbimport.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset the DB before import. Call without files to *just* reset",
+    )
+    #################################################
+    ## Advanced prune path
+    #################################################
+    prunepath = subparsers["prunepath"] = adv_subpar.add_parser(
+        "prune-file",
+        parents=[global_parent, config_global, exe_dump_parent],
+        help="Prune a specific file (real-path or rpath)",
+        description="""
+            [ADVANCED] Prune a specific "real-path" (or "rpath") from the database,
+            optionally including all references to the path.
+            """,
+    )
+
+    prunepath.add_argument(
+        "rpath",
+        help="""
+            Specify rpath(s) ("real paths") to prune. These are the paths where the 
+            file is actually stored such as what you see with `versions --real-path`            
+            """,
+        nargs="+",
+    )
+
+    prunepath.add_argument(
+        "--error-if-referenced",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="""
+            If true (default), will error if there are references to the provided
+            path(s). If false, will *also* delete those references.
+        """,
+    )
+    #################################################
+    ## DONE
+    #################################################
     args = parser.parse_args(argv)
     args._argv0 = argv
 
@@ -499,7 +636,18 @@ def parse(argv=None, shebanged=False):
 
 
 def clishebang(argv=None):
-    """This will add the config and assume backup if it isn't specified'"""
+    """
+    This will add the config and assume backup if it isn't specified.
+    Generally, this works by catching a failure on the argument parser then
+    adding 'backup' command. That emits an incorrect error so we *try* to avoid
+    that by adding 'backup' if nothing else is specified. For example"
+
+        ./config.py # Will add backup right away
+        ./config.py --flag # will have erorr message but then work.
+
+    It isn't perfect but reduces the number of messages.
+
+    """
     if argv is None:
         argv = sys.argv[1:]
     if not argv:
@@ -508,6 +656,13 @@ def clishebang(argv=None):
 
     config = argv[0]
     argv = argv[1:] + ["--config", config]
+
+    # If argv is only len-2, no command has been specified. Therefore, try to skip
+    # the try/except below since it will emit cli help when not needed. Will still
+    # happen if any backup flags are used. Not a big deal.
+    if len(argv) == 2:
+        argv.insert(0, "backup")
+
     try:
         cliconfig = parse(argv, shebanged=config)
     except ThrowingArgumentParserError as E:
@@ -540,16 +695,24 @@ def _cli(cliconfig):
     from .configuration import Config
 
     verbosity = 0
-    if cliconfig.command in {"backup", "restore-dir", "restore-file", "prune"}:
+    if cliconfig.command in {
+        "backup",
+        "refresh",
+        "restore-dir",
+        "restore-file",
+        "prune",
+        "prune-file",
+        "dbimport",
+    }:
         verbosity += 1
-    verbosity += getattr(cliconfig, "verbose", 0)
-    verbosity -= getattr(cliconfig, "quiet", 0)
+    verbosity += getattr(cliconfig, "verbose", 0) - getattr(cliconfig, "quiet", 0)
     verbosity = max([0, verbosity])
 
     try:
         add_params = {}
         add_params["subdir"] = getattr(cliconfig, "subdir", "")
 
+        # config also sets logging
         config = Config(
             cliconfig.config,
             tmpdir=getattr(cliconfig, "temp_dir", None),
@@ -557,24 +720,24 @@ def _cli(cliconfig):
             add_params=add_params,
         )
     except Exception as E:
-        print("ERROR: " + str(E), file=sys.stderr)
+        logger.error(f"parse: {E}")
         sys.exit(2)
 
     try:
         config.cliconfig = cliconfig
         argv = cliconfig._argv0
-        debug(f"{argv = }")
+        logger.debug(f"{argv = }")
 
         if cliconfig.command == "init":
             config._write_template(force=cliconfig.force_overwrite)
-            log.print(f"New config in {_r(cliconfig.config)}")
+            print(f"New config in {_r(cliconfig.config)}")
 
             return
 
         config.parse(override_txt="\n".join(cliconfig.override))
-        debug(f"{cliconfig = }")
+        logger.debug(f"{cliconfig = }")
 
-        if getattr(cliconfig, "_return_config", False):
+        if cliconfig.command == "_config":
             global _TESTMODE
             _TESTMODE = True
             return config
@@ -593,9 +756,16 @@ def _cli(cliconfig):
         elif cliconfig.command == "refresh":
             from .dstdb import DFBDST
 
-            DFBDST(config).reset()
+            DFBDST(config).reset(use_snapshots=cliconfig.use_snapshots)
             return config
+        elif cliconfig.command == "dbimport":
+            from .dstdb import DFBDST
 
+            DFBDST(config).dbimport(
+                cliconfig.files,
+                reset=cliconfig.reset,
+            )
+            return config
         elif cliconfig.command == "snapshot":
             from .listing import snapshot
 
@@ -621,24 +791,30 @@ def _cli(cliconfig):
 
             return Restore(config)
 
-        elif cliconfig.command == "prune":
+        elif cliconfig.command in ("prune", "prune-file"):
             from .prune import Prune
 
-            return Prune(config)
+            prune = Prune(config)
+            if cliconfig.command == "prune":
+                prune.bydate()
+            else:
+                prune.byrpaths()
+            return prune
+        else:
+            logger.error(f"Unrecognized command {_r(cliconfig.command)}")
+            return config
 
     except Exception as E:
-        log("ERROR: " + str(E), file=sys.stderr, verbosity=0)
-        log(
-            f"ERROR Occured. See logs (including debug) at {_r(str(config.tmpdir.resolve()))}",
-            file=sys.stderr,
-            verbosity=0,
-        )
+        logger.error("")
+        logger.error(str(E))
+        logger.error("")
+
         try:
             # Call fail_shell iff cliconfig.command == "backup"
             if cliconfig.command == "backup" and config.fail_shell:
                 from .utils import shell_runner
 
-                log("Running 'fail_shell' commands. Note: May not get logged")
+                logger.info("Running 'fail_shell' commands. Note: May not get logged")
                 env = {
                     "LOGPATH": str(log.log_file.resolve()),
                     "DEBUGPATH": str(log.debug_file.resolve()),
@@ -651,12 +827,12 @@ def _cli(cliconfig):
                     prefix="fail",
                 )
             if cliconfig.command == "backup":
-                log(
+                logger.info(
                     "Will attempt to save logs and/or snapshots if configured. May fail"
                 )
                 back.upload_logs()
         except:
-            print("Saving logs and running fail_shell didn't work", file=sys.stderr)
+            logging.error("Saving logs and running fail_shell didn't work")
 
         if config.verbosity > 1:
             raise
@@ -665,6 +841,6 @@ def _cli(cliconfig):
             sys.exit(1)
     finally:
         try:
-            config.rc.stop_rc()
+            config.rc.stop()
         except:
             pass

@@ -1,8 +1,11 @@
+import logging
+import os
 from threading import Thread
 from queue import Queue
-import os
 
 _r = repr
+
+logger = logging.getLogger(__name__)
 
 
 class _KILL:
@@ -102,7 +105,7 @@ def thread_map_unordered(
 
     (2) Can automatically wrap exceptions without an additional code. See options above
     """
-    # Use to know if an exceptopm was raised here and ONLY here. Will be replaced
+    # Use to know if an exceptoion was raised here and ONLY here. Will be replaced
     thread_map_unordered_exception = os.urandom(5)
     kill = _KILL()
 

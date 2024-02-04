@@ -4,6 +4,7 @@
 import os, sys, shutil
 from pathlib import Path
 import gzip as gz
+import lzma as xz
 import re
 import subprocess
 import json
@@ -15,6 +16,7 @@ if p not in sys.path:
     sys.path.insert(0, p)
 
 from dfb.cli import cli
+from dfb.utils import smart_splitext
 from dfb.backup import NoCommonHashError
 
 # Local
@@ -28,8 +30,6 @@ _r = repr
 
 @pytest.mark.parametrize("rename_method", ["reference", "copy"])
 def test_main(rename_method):
-    import json
-
     test = testutils.Tester(name="main")
 
     test.config["renames"] = "mtime"
@@ -43,13 +43,15 @@ def test_main(rename_method):
     # +
     test.write_pre("src/versions.txt", "versions 1.")
     test.write_pre(
-        "src/unįçôde, spaces, symb°ls (!@#$%^&*) in €‹›ﬁﬂ‡°·—±", "did it work?"
+        "src/unįçôde, spaces, symb°ls (!@#$%^&*) in €‹›ﬁﬂ‡°·—±",
+        "did it work?",
     )
     test.write_pre("src/untouched.txt", "Do not modify")
     test.write_pre("src/mod_same-size.txt", "modify but not change size")
     test.write_pre("src/mod_diff_size.txt", "modify and change size")
     test.write_pre(
-        "src/mod_same-size-mtime.txt", "modify but not change size OR modTime"
+        "src/mod_same-size-mtime.txt",
+        "modify but not change size OR modTime",
     )
     test.write_pre("src/touch.txt", "touch me", dt=-1000)
     test.write_pre("src/sub/move.txt", "move me")
@@ -150,6 +152,14 @@ def test_main(rename_method):
 
     # + tags=[]
     test.call("snapshot", "--output", "A.jsonl")
+
+    # Use this opportunity to also test disable_refresh. -vv makes it throw error
+    try:
+        test.call("refresh", "-o", "disable_refresh = True", "-vv")
+        assert False
+    except ValueError:
+        pass
+
     test.call("refresh")
     test.call("snapshot", "--output", "B.jsonl")
 
@@ -251,8 +261,8 @@ def test_main(rename_method):
         "-",
     )
 
-    test.call("ls", "-d", "--after", "u4", "--no-header")
-    items = {l.strip() for l in test.logs[-1][0].split("\n") if l.strip()}
+    out = test.ls("-d", "--after", "u4", "--no-header")
+    items = {l.strip() for l in out.split("\n") if l.strip()}
     assert items == {"versions.txt", "moved_again.txt", "sub2/"}
 
     cli(["init", "new.py"])
@@ -284,7 +294,7 @@ def test_shell():
         dedent(
             """\
         print("Post Shell")
-        import os
+        import os,sys
         print(f"{os.getcwd() = }")
         sys.exit(10)"""
         ),
@@ -300,19 +310,20 @@ def test_shell():
 
     # +
     out = test.logs[-1][0]
-    assert ".pre.shell: $ echo PRESHELL" in out
-    assert ".pre.shell: $ echo PWD = $PWD" in out
-    assert ".pre.shell: $ echo CONFIGDIR = $CONFIGDIR" in out
-    assert ".pre.shell.out: PRESHELL" in out
-    assert ".pre.shell.out: PWD = /" in out
-    assert ".pre.shell.out: CONFIGDIR = /" in out
+    assert "pre.shell: $ echo PRESHELL" in out
+    assert "pre.shell: $ echo PWD = $PWD" in out
+    assert "pre.shell: $ echo CONFIGDIR = $CONFIGDIR" in out
+    assert "out: PRESHELL" in out
+    assert "PWD = /" in out
+    assert "CONFIGDIR = /" in out
 
     assert (
-        r"""post.shell: ['python', '-c', 'print("Post Shell")\nimport os\nprint(f"{os.getcwd() = }")\nsys.exit(10)']"""
+        r"""post.shell ['python', '-c', 'print("Post Shell")\nimport os,sys\nprint(f"{os.getcwd() = }")\nsys.exit(10)']"""
         in out
     )
-    assert "post.shell.out: Post Shell" in out
-    assert "post.shell.out: os.getcwd() = '/" in out
+
+    assert "out: Post Shell" in out
+    assert "os.getcwd() = '/" in out
     # -
 
     test.config["post_shell"] = dict(
@@ -340,38 +351,27 @@ def test_shell():
     test.backup(offset=3)
 
     out = test.logs[-1][0]
-    assert "post.shell.out: os.getcwd() = '/" in out
-    assert "post.shell.out: os.environ.get('SHELL_TEST','FAIL') = 'SUCCESS'" in out
-    assert "post.shell.out: os.environ.get('CONFIGDIR','FAIL') = '/" in out
+    assert "os.getcwd() = '/" in out
+    assert "os.environ.get('SHELL_TEST','FAIL') = 'SUCCESS'" in out
+    assert "os.environ.get('CONFIGDIR','FAIL') = '/" in out
 
 
-@pytest.mark.parametrize("upload_logs", [True, False])
-def test_log_upload(upload_logs):
+def test_log_upload():
     test = testutils.Tester(name="log_upload")
 
-    test.config["upload_logs"] = upload_logs
     test.write_config()
 
     test.write_pre("src/versions.txt", "versions 1.")
     test.backup(offset=1)
-    assert os.path.exists("dst/.dfb/logs/19700101000001Z.log") == upload_logs
+    assert os.path.exists("dst/.dfb/logs/19700101000001Z.log")
 
-    try:
-        from dfb import _FAIL
-
-        _FAIL.add("backup_transfer")
-
-        test.write_pre("src/versions.txt", "versions 2..")
-        test.backup(offset=3, allow_error=True)
-        assert os.path.exists("dst/.dfb/logs/19700101000003Z.log") == upload_logs
-    finally:
-        _FAIL.remove("backup_transfer")
+    test.write_pre("src/versions.txt", "versions 2..")
+    test.backup(offset=3, allow_error=True)
+    assert os.path.exists("dst/.dfb/logs/19700101000003Z.log")
 
 
-@pytest.mark.parametrize("reuse_hashes", ["mtime", False])
-def test_dst_compare_and_dst_renames(reuse_hashes):
+def test_dst_compare_and_dst_renames():
     # Test and verify using local vs destination attributes
-
     test = testutils.Tester(name="dst_attributes")
 
     # ## Compare
@@ -381,7 +381,6 @@ def test_dst_compare_and_dst_renames(reuse_hashes):
     vq = ["-v"]
 
     # +
-    test.config["reuse_hashes"] = reuse_hashes
     test.config["dst_list_rclone_flags"] = ["--fast-list"]
 
     test.config["compare"] = "hash"
@@ -410,7 +409,7 @@ def test_dst_compare_and_dst_renames(reuse_hashes):
 
     # This should transfer since we are src-to-dst compare
     test.write_pre("src/file.txt", "file", dt=-22)
-    back = test.backup("--refresh", "-v", offset=9)
+    back = test.backup("--refresh", "--no-refresh-use-snapshots", "-v", offset=9)
     assert back.new + back.modified == ["file.txt"]  # Transfer
 
     # Side Test: Make sure dst_list_rclone_flags got set. Look for --fast-list
@@ -427,8 +426,6 @@ def test_dst_compare_and_dst_renames(reuse_hashes):
     # +
     test.config["compare"] = "mtime"
     test.config["dst_compare"] = "mtime"
-
-    test.config["reuse_hashes"] = reuse_hashes
 
     test.config["renames"] = "hash"
     test.config["dst_renames"] = "hash"
@@ -461,9 +458,9 @@ def test_dst_compare_and_dst_renames(reuse_hashes):
     )
 
     # +
-    # This should still track the move from mtime because we are src-to-dat
+    # This should still track the move from mtime because we are src-to-dst
     test.move("src/mv4.txt", "src/mv5.txt")
-    back = test.backup("--refresh", *vq, offset=21)
+    back = test.backup("--refresh", "--no-refresh-use-snapshots", *vq, offset=21)
 
     assert len(back.moves) == 1
     assert (
@@ -484,82 +481,10 @@ def test_dst_compare_and_dst_renames(reuse_hashes):
     )
 
     test.move("src/mv6.txt", "src/mv7.txt")
-    back = test.backup("--refresh", *vq, offset=25)
+    back = test.backup("--refresh", "--no-refresh-use-snapshots", *vq, offset=25)
     # Disabled. Check it
     assert len(back.moves) == 0
     assert back.new == ["mv7.txt"]
-
-
-@pytest.mark.parametrize("rename_method", ["reference", "copy"])
-def test_shell_scripts(rename_method):
-    test = testutils.Tester(name="shell_scripts")
-
-    test.config["renames"] = "hash"
-    test.config["reuse_hashes"] = False
-    test.config["hash_type"] = "sha1"
-    test.config["rename_method"] = rename_method
-    test.write_config()
-
-    # +
-    test.write_pre("src/do nothing.txt", "nothing")
-    test.write_pre("src/will modify.txt", "modify me")
-    test.write_pre("src/will move.txt", "move me")
-    test.write_pre("src/will del.txt", "delete me")
-
-    test.backup("--dry-run", offset=1)
-    test.backup(offset=1)
-    # -
-
-    test.write_post("src/will modify.txt", "MODIFIED me")
-    test.move("src/will move.txt", "src/has been move.txt")
-    os.unlink("src/will del.txt")
-
-    test.backup("--shell-script", "-", offset=3)
-    test.backup("--shell-script", "run3.sh", offset=3)
-
-    subprocess.call(["bash", "run3.sh"])
-    run3 = test.read("run3.sh")
-
-    if rename_method == "reference":
-        # Script
-        assert "## References (moves)" in run3
-        assert run3.count("rcat") == 3  # 2 del + 1 move
-        assert run3.count("printf") == 1
-
-        # Process
-        ref = test.read("dst/has been move.19700101000003R.txt")
-        assert json.loads(ref) == {"ver": 2, "rel": "will move.19700101000001.txt"}
-
-    else:
-        # script
-        assert "## Copies (moves)" in run3
-        assert run3.count("rcat") == 2  # 2 del ONLY
-        assert run3.count("printf") == 0
-        assert run3.count("dst/will move.19700101000001.txt") == 1  # only one
-
-        # process
-        assert test.read("dst/has been move.19700101000003.txt") == "move me"
-
-    # This won't make a difference in actual testing since there is no verification
-    test.call("ls", "-ll")
-    test.call("ls", "--no-header")
-    items = {l.strip() for l in test.logs[-1][0].split("\n") if l.strip()}
-    assert items == {
-        "do nothing.txt",
-        "will del.txt",
-        "will modify.txt",
-        "will move.txt",
-    }  # These are wrong!
-
-    test.call("refresh")
-    test.call("ls", "--no-header")
-    items = {l.strip() for l in test.logs[-1][0].split("\n") if l.strip()}
-    assert items == {
-        "do nothing.txt",
-        "has been move.txt",
-        "will modify.txt",
-    }  # These are right
-    test.call("ls", "-ll")
 
 
 def test_restore_error():
@@ -652,19 +577,13 @@ def test_restore_error():
     # Test some restores with no file
 
 
-@pytest.mark.parametrize("mode", ["size", "mtime", "hash", "hash_mtime"])
+@pytest.mark.parametrize("mode", ["size", "mtime", "hash"])
 def test_false_negs_compare(mode):
     test = testutils.Tester(name="false_negs_compare")
 
-    if mode == "hash_mtime":
-        compare = "hash"
-        reuse = "mtime"
-    else:
-        compare = mode
-        reuse = False
+    compare = mode
 
     test.config["compare"] = compare
-    test.config["reuse_hashes"] = reuse
     test.write_config()
 
     # +
@@ -702,14 +621,11 @@ def test_false_negs_compare(mode):
             "touch.txt",
         }
     elif compare == "hash":
-        if reuse == "mtime":
-            assert set(back.modified) == {"change_size.txt", "no_size_change.txt"}
-        else:
-            assert set(back.modified) == {
-                "change_size.txt",
-                "no_size_change.txt",
-                "no_size-mtime_change.txt",
-            }
+        assert set(back.modified) == {
+            "change_size.txt",
+            "no_size_change.txt",
+            "no_size-mtime_change.txt",
+        }
 
 
 def test_missing_ref():
@@ -751,18 +667,17 @@ def test_missing_ref():
     # -
 
     test.call("refresh")
-    test.call("ls", "-q")
+    out = test.ls("-q")
 
     log = "\n".join(l[0] for l in test.logs[-2:])
     assert (
         "WARNING: File 'fileONE.19700101000003R.txt' references 'file1.19700101000001.txt' but it is missing. Will just be treated as deleted"
         in log
     )
-    assert "file2.txt" in log
+    assert "file2.txt" in out
 
-    test.call("ls", "-d")
-    log = test.logs[-1][0]
-    assert "fileONE.txt (DEL)" in log
+    out = test.ls("-d")
+    assert "fileONE.txt (DEL)" in out
 
 
 def test_override():
@@ -859,11 +774,8 @@ def test_subdirs():
     assert not os.path.exists("dst/sub2")
 
 
-symlinks_modes = itertools.product(["link", "copy", "skip"], [True, False])
-
-
-@pytest.mark.parametrize("mode,shell", symlinks_modes)
-def test_symlinks(mode, shell):
+@pytest.mark.parametrize("mode", ["link", "copy", "skip"])
+def test_symlinks(mode):
     test = testutils.Tester(name="symlinks", src="srcalias:")  # Test with an alias!
 
     test.config["links"] = mode
@@ -879,18 +791,7 @@ def test_symlinks(mode, shell):
     os.symlink("../file1.txt", "src/other/backfile1.txt")
     os.symlink("../sub/file2.txt", "src/other/backfile2.txt")
 
-    if not shell:
-        test.backup(offset=1)
-    else:
-        test.backup("--shell-script", "back.sh")
-        subprocess.call(
-            """\
-            chmod +x back.sh
-            ./back.sh""",
-            shell=True,
-        )
-        test.call("refresh")  # Refresh b/c shell
-        test.call("ls")
+    test.backup(offset=1)
 
     if mode == "link":
         assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
@@ -904,25 +805,25 @@ def test_symlinks(mode, shell):
         }
         assert set(testutils.tree("dst")) == {
             "dst/file1.19700101000001.txt",
-            "dst/link1.txt.19700101000001.rclonelink",
-            "dst/link2.1.txt.19700101000001.rclonelink",
-            "dst/other/backfile1.txt.19700101000001.rclonelink",
-            "dst/other/backfile2.txt.19700101000001.rclonelink",
+            "dst/link1.19700101000001.txt.rclonelink",
+            "dst/link2.1.19700101000001.txt.rclonelink",
+            "dst/other/backfile1.19700101000001.txt.rclonelink",
+            "dst/other/backfile2.19700101000001.txt.rclonelink",
             "dst/sub/file2.19700101000001.txt",
-            "dst/sub/link2.2.txt.19700101000001.rclonelink",
+            "dst/sub/link2.2.19700101000001.txt.rclonelink",
         }
 
-        assert test.read("dst/link1.txt.19700101000001.rclonelink") == "file1.txt"
-        assert test.read("dst/link2.1.txt.19700101000001.rclonelink") == "sub/file2.txt"
+        assert test.read("dst/link1.19700101000001.txt.rclonelink") == "file1.txt"
+        assert test.read("dst/link2.1.19700101000001.txt.rclonelink") == "sub/file2.txt"
         assert (
-            test.read("dst/other/backfile1.txt.19700101000001.rclonelink")
+            test.read("dst/other/backfile1.19700101000001.txt.rclonelink")
             == "../file1.txt"
         )
         assert (
-            test.read("dst/other/backfile2.txt.19700101000001.rclonelink")
+            test.read("dst/other/backfile2.19700101000001.txt.rclonelink")
             == "../sub/file2.txt"
         )
-        assert test.read("dst/sub/link2.2.txt.19700101000001.rclonelink") == "file2.txt"
+        assert test.read("dst/sub/link2.2.19700101000001.txt.rclonelink") == "file2.txt"
         assert len(test.tree_sha1s("dst")) == 7
     elif mode == "copy":
         assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
@@ -982,51 +883,15 @@ def test_symlinks_trick():
         "file1.txt",
         "trick.txt.rclonelink",
     }
-    assert test.read("dst/link1.txt.19700101000001.rclonelink").strip() == "file1.txt"
-    assert test.read("dst/trick.txt.19700101000001.rclonelink").strip() == "Not a link"
+    assert test.read("dst/link1.19700101000001.txt.rclonelink").strip() == "file1.txt"
+    assert test.read("dst/trick.19700101000001.txt.rclonelink").strip() == "Not a link"
 
     log = test.logs[-1][0]
     assert "trick.txt' could not be read. Treating as a file" in log
 
 
-def test_keep_going_on_fail():
-    """
-    Make sure you keep running even if there is a failure
-    """
-    test = testutils.Tester(name="errs")
-    test.write_config()
-
-    test.write_pre("src/mod.txt", "mod me .")
-    test.write_pre("src/del.txt", "del me ..")
-    test.write_pre("src/mv.txt", "move me ...")
-
-    test.backup(offset=1)
-
-    test.write_post("src/mod.txt", "moded me .")
-    os.unlink("src/del.txt")
-    test.move("src/mv.txt", "src/moved.txt")
-
-    try:
-        from dfb import _FAIL
-
-        _FAIL.update({"backup_transfer", "backup_reference", "backup_delete"})
-
-        test.backup(offset=3)
-    finally:
-        _FAIL.difference_update(
-            {"backup_transfer", "backup_reference", "backup_delete"}
-        )
-
-    # make sure it keeps going
-    rem = {dict(a)["apath"] for a in test.remote_snapshot()}
-    assert rem == {"mod.txt", "moved.txt"}
-    assert test.read("dst/mod.19700101000003.txt") == "moded me ."
-
-
-@pytest.mark.parametrize("upload", [True, False])
-def test_snapshots(upload):
+def test_snapshots():
     test = testutils.Tester(name="snapshots")
-    test.config["upload_snapshots"] = upload
 
     test.write_config()
 
@@ -1047,53 +912,57 @@ def test_snapshots(upload):
 
     test.backup(offset=5)
 
-    if not upload:
-        assert not os.path.exists("dst/.dfb/snapshots/")
-        return
-
-    # Call for snapshots
+    # Call for snapshots. Exports should be cumulative
     test.call("snapshot", "--output", "1.jsonl", "--only", "u1", "--deleted")
     test.call("snapshot", "--output", "3.jsonl", "--only", "u3", "--deleted")
     test.call("snapshot", "--output", "5.jsonl", "--only", "u5", "--deleted")
+    test.call("snapshot", "--output", "e1.jsonl", "--before", "u1", "--export")
+    test.call("snapshot", "--output", "e3.jsonl", "--before", "u3", "--export")
+    test.call("snapshot", "--output", "e5.jsonl", "--before", "u5", "--export")
 
     keys = ["rpath", "apath", "timestamp", "size"]
+    cumupl = set()
     for uz in [1, 3, 5]:
         with open(f"{uz}.jsonl") as fp:
             cli = [json.loads(line) for line in fp]
             cli = {frozenset((k, f[k]) for k in keys) for f in cli}
-        with open(f"dst/.dfb/snapshots/1970010100000{uz}Z.jsonl") as fp:
+
+        with open(f"e{uz}.jsonl") as fp:
+            exp = [json.loads(line) for line in fp]
+            exp = {frozenset((k, f[k]) for k in keys) for f in exp}
+
+        with gz.open(f"dst/.dfb/snapshots/1970/01/1970010100000{uz}Z.jsonl.gz") as fp:
             upl = [json.loads(line) for line in fp]
             upl = {frozenset((k, f[k]) for k in keys) for f in upl}
+            cumupl.update(upl)
+
         assert cli == upl
+        assert exp == cumupl
 
+    # Test with import
+    test.call("snapshot", "--output", "oe1.jsonl", "--only", "u1", "--export")
+    test.call("snapshot", "--output", "oe3.jsonl", "--only", "u3", "--export")
+    test.call("snapshot", "--output", "oe5.jsonl", "--only", "u5", "--export")
 
-@pytest.mark.parametrize("reuse_hashes", [False, "mtime", "size"])
-def test_reuse_hashes_method(reuse_hashes):
-    test = testutils.Tester(name="reuse_hashes")
-    test.config["reuse_hashes"] = reuse_hashes
-    test.config["compare"] = "hash"
-    test.write_config()
+    # w/ reset
+    test.call("advanced", "dbimport", "--reset", "oe1.jsonl", "oe3.jsonl", "oe5.jsonl")
+    test.call("snapshot", "--output", "new.jsonl", "--export")
+    with open("new.jsonl") as fp:
+        exp = [json.loads(line) for line in fp]
+        exp = {frozenset((k, f[k]) for k in keys) for f in exp}
+    assert exp == cumupl
 
-    test.write_pre("src/same_size.txt", "versions 1")
-    test.backup(offset=1)
-
-    test.write_post("src/same_size.txt", "versions 2")  # Same size!
-    test.backup(offset=3)
-
-    if not reuse_hashes:
-        assert os.path.exists("dst/same_size.19700101000003.txt")
-        assert not os.path.exists("cache/DFB/test_reuse_hashes.checksum.db")
-    elif reuse_hashes == "mtime":
-        assert os.path.exists("dst/same_size.19700101000003.txt")
-        assert os.path.exists("cache/DFB/test_reuse_hashes.checksum.db")
-    elif reuse_hashes == "size":
-        assert not os.path.exists("dst/same_size.19700101000003.txt")
-        assert os.path.exists("cache/DFB/test_reuse_hashes.checksum.db")
+    # w/o reset
+    test.call("advanced", "dbimport", "oe1.jsonl", "oe3.jsonl", "oe5.jsonl")
+    test.call("snapshot", "--output", "new.jsonl", "--export")
+    with open("new.jsonl") as fp:
+        exp = [json.loads(line) for line in fp]
+        exp = {frozenset((k, f[k]) for k in keys) for f in exp}
+    assert exp == cumupl
 
 
 def test_missing_hashes():
     test = testutils.Tester(name="missing_hashes")
-    test.config["reuse_hashes"] = False
     test.config["compare"] = "hash"
     test.write_config()
 
@@ -1171,33 +1040,118 @@ def test_metadata(metadata):
         assert correct < n
 
 
+def test_dump():
+    test = testutils.Tester(name="dump")
+
+    test.config["metadata"] = False  # Issues with atime due to run time
+    test.config["renames"] = "mtime"
+    test.write_config()
+
+    def comp(t):
+        """Compare results. Order doesn't matter"""
+        with open(f"t{t}.jsonl") as fp:
+            dump = {testutils.dict2frozen(json.loads(l)) for l in fp}
+        with gz.open(f"dst/.dfb/snapshots/1970/01/197001010000{t:02d}Z.jsonl.gz") as fp:
+            snap = {testutils.dict2frozen(json.loads(l)) for l in fp}
+        return dump == snap
+
+    test.write_pre("src/new.txt", "new!")
+    test.write_pre("src/modify.txt", "modify")
+    test.write_pre("src/move_by_ref.txt", "will move by ref")
+    test.write_pre("src/move_by_ref_then_copy.txt", "will move by ref then copy")
+    test.write_pre("src/move_by_copy.txt", "will move by copy")
+    test.write_pre("src/delete.txt", "delete")
+
+    test.backup("--dump", "t1.jsonl", offset=1)
+    test.backup(offset=1)
+    assert comp(1)
+
+    test.write_post("src/modify.txt", "modify.")
+    shutil.move("src/move_by_ref.txt", "src/moved_by_ref.txt")
+    shutil.move("src/move_by_ref_then_copy.txt", "src/moved_by_ref_then_copy.txt")
+    os.unlink("src/delete.txt")
+
+    test.backup("--dump", "t3.jsonl.gz", offset=3)  # Just checking the compression
+    test.backup("--dump", "t3.jsonl.xz", offset=3)  # Just checking the compression
+    test.backup("--dump", "t3.jsonl", offset=3)
+    test.backup(offset=3)
+    assert comp(3)
+
+    test.write_post("src/modify.txt", "modify..")
+    shutil.move("src/moved_by_ref_then_copy.txt", "src/moved_by_ref_now_copy.txt")
+    shutil.move("src/move_by_copy.txt", "src/moved_by_copy.txt")
+
+    test.backup("--dump", "t5.jsonl", "-o", "rename_method = 'copy'", offset=5)
+    test.backup("-o", "rename_method = 'copy'", offset=5)
+    assert comp(5)
+
+    with (
+        open("t3.jsonl", "rt") as r,
+        gz.open("t3.jsonl.gz", "rt") as g,
+        xz.open("t3.jsonl.xz", "rt") as x,
+    ):
+        assert r.read() == g.read() == x.read()
+
+    test.call("prune", "u4", "--dump", "t7.jsonl", offset=7)
+    test.call("prune", "u4", offset=7)
+    assert comp(7)
+
+
+def test_auto():
+    """
+    WARNING -- these may have to be updated in newer versions of rclone if
+               any of the remotes get new capabilities!
+    """
+    autos = [
+        *["compare", "dst_compare"],
+        *["renames", "dst_renames"],
+        *["get_modtime", "get_hashes"],
+    ]
+
+    test = testutils.Tester(name="auto_settings")
+
+    test.config |= {k: "auto" for k in autos}
+
+    config = test.write_config()
+    assert all(getattr(config, k, False) == "auto" for k in autos)
+
+    config._set_auto()
+
+    assert {k: getattr(config, k, None) for k in autos} == {
+        "compare": "mtime",
+        "dst_compare": "mtime",
+        "renames": "mtime",
+        "dst_renames": "mtime",
+        "get_modtime": True,
+        "get_hashes": False,
+    }
+
+
 if __name__ == "__main__":
     test_main("reference")
     #     test_main("copy")
     #     test_shell()
-    #     test_log_upload(True)
-    #     test_log_upload(False)
-    #     test_dst_compare_and_dst_renames("mtime")
+    #     test_log_upload()
     #     test_dst_compare_and_dst_renames(False)
-    #     test_shell_scripts('reference')
-    #     test_shell_scripts('copy')
     #     test_restore_error()
-    #     for mode in ["size", "mtime", "hash", "hash_mtime"]:
+    #     for mode in ["size", "mtime", "hash":
     #         test_false_negs_compare(mode)
     #     test_missing_ref()
     #     test_override()
     #     test_subdirs()
-    #     for mode, shell in itertools.product(["link", "copy", "skip"], [True, False]):
-    #         test_symlinks(mode, shell)
+    #     test_symlinks('link')
+    #     test_symlinks('copy')
+    #     test_symlinks('skip')
     #     test_symlinks_trick()
-    #     test_keep_going_on_fail()
-    #    test_snapshots(True)
-    #    test_snapshots(False)
-    #     for reuse_hashes in [False, "mtime", "size"]:
-    #         test_reuse_hashes_method(reuse_hashes)
+    #     test_snapshots()
     #     test_missing_hashes()
     #     test_metadata(True)
     #     test_metadata(False)
+    #     test_dump()
+    #     test_auto()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)
+
+    #     #test_shell_scripts('reference')
+    #     #test_shell_scripts('copy')

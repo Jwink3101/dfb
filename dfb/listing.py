@@ -5,16 +5,17 @@ import os, sys
 import shutil
 import json
 import operator
+import logging
 
-from . import LOCK, log, debug
+from . import LOCK
 from .dstdb import DFBDST
-from .utils import tabulate, bytes2human
+from .utils import tabulate, human_readable_bytes, head_tail_table
 from .timestamps import timestamp_parser
-from .rclone import rcpathjoin
+from .rclonerc import rcpathjoin
+
+logger = logging.getLogger(__name__)
 
 _r = repr
-
-# Module CLIlisting
 
 
 def snapshot(config):
@@ -25,6 +26,7 @@ def snapshot(config):
         path=args.path,
         before=args.before,
         after=args.after,
+        export=args.export,  # below is ignored if export.
         remove_delete=args.deleted == 0,
         delete_only=args.deleted > 1,
     )
@@ -40,8 +42,8 @@ def snapshot(config):
         shutil.move(swap, args.output)
     else:
         for row in rows:
-            log.print(json.dumps(row, ensure_ascii=False))
-        log.print("", end="", flush=True)
+            print(json.dumps(row, ensure_ascii=False))
+        print("", end="", flush=True)
 
 
 def ls(config):
@@ -61,7 +63,7 @@ def ls(config):
 
     # Build a table
     table = []
-    if not args.no_header:
+    if args.header:
         table.append(["versions", "total_size", "size", "ModTime", "Timestamp", "path"])
     for item in items:
         if isinstance(item, str):  # subdir
@@ -91,8 +93,8 @@ def ls(config):
         path = path if args.full_path else os.path.relpath(path, args.path)
 
         if args.human:
-            size = "{:0.2f} {}".format(*bytes2human(item["size"]))
-            tot_size = "{:0.2f} {}".format(*bytes2human(item["tot_size"]))
+            size = "{:0.2f} {}".format(*human_readable_bytes(item["size"]))
+            tot_size = "{:0.2f} {}".format(*human_readable_bytes(item["tot_size"]))
         else:
             size = str(item["size"])
             tot_size = str(item["tot_size"])
@@ -110,11 +112,18 @@ def ls(config):
         pass  # Just to be more clear
 
     if not table:
-        log.print(f"No files under {_r(args.path)}. Check the path and the date")
+        print(f"No files under {_r(args.path)}. Check the path and the date")
         return
 
+    table = head_tail_table(
+        table,
+        head=args.head,
+        tail=args.tail,
+        dots=True,
+        header=args.header,
+    )
     table = tabulate(table)
-    log.print(table, flush=True)
+    print(table, flush=True)
 
 
 def file_versions(config):
@@ -127,13 +136,13 @@ def file_versions(config):
     out = [f"file: {_r(args.filepath)}"]
 
     table = []
-    if not args.no_header:
+    if args.header:
         table.append(["Ref. Count", "Size", "ModTime", "Timestamp", "Real Path"])
     for item in versions:
         row = [str(item.get("ref_count", ""))]
 
         if args.human:
-            size = "{:0.2f} {}".format(*bytes2human(item["size"]))
+            size = "{:0.2f} {}".format(*human_readable_bytes(item["size"]))
         else:
             size = str(item["size"])
 
@@ -175,12 +184,19 @@ def file_versions(config):
         table = [row[:-1] for row in table]
 
     if table:
+        table = head_tail_table(
+            table,
+            head=args.head,
+            tail=args.tail,
+            dots=True,
+            header=args.header,
+        )
         out.append(tabulate(table))
     else:
         out.append("  **No such file**. Check the path")
 
     out = "\n".join(out)
-    log.print(out, flush=True)
+    print(out, flush=True)
 
 
 def timestamps(config):
@@ -196,16 +212,17 @@ def timestamps(config):
             COUNT(timestamp) AS num_total,
             SUM(CASE WHEN size < 0 THEN 1 ELSE 0 END) AS num_del,
             SUM(CASE WHEN isref = 1 THEN 1 ELSE 0 END) AS num_mv,
-            SUM(CASE WHEN (size >= 0 
-                      AND (isref IS NULL OR isref = 0) ) 
-                      THEN size ELSE 0 END) AS size
+            SUM(CASE WHEN (size >= 0 AND (isref IS NULL OR isref = 0) ) 
+                     THEN size 
+                     ELSE 0 
+                     END) AS size
         FROM items 
         GROUP BY timestamp
         ORDER BY timestamp"""
     )
 
     table = []
-    if not args.no_header:
+    if args.header:
         table.append(["Timestamp", "Total", "Deleted", "Moved", "Size"])
 
     for item in snapshots:
@@ -220,11 +237,20 @@ def timestamps(config):
         row = [ts]
         row.extend(item[k] for k in ["num_total", "num_del", "num_mv"])
         if args.human:
-            size = "{:0.2f} {}".format(*bytes2human(item["size"]))
+            size = "{:0.2f} {}".format(*human_readable_bytes(item["size"]))
         else:
             size = str(item["size"])
         row.append(size)
         table.append(row)
 
     table = [[str(c) for c in row] for row in table]
-    log.print(tabulate(table))
+
+    table = head_tail_table(
+        table,
+        head=args.head,
+        tail=args.tail,
+        dots=True,
+        header=args.header,
+    )
+
+    print(tabulate(table), flush=True)

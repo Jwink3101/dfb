@@ -1,10 +1,13 @@
 import datetime
+import logging
 
-from .configuration import log, debug, LOCK
+from .configuration import LOCK
 from .utils import time2all
 from .timestamps import timestamp_parser
 
-__version__ = "20240106.0"
+logger = logging.getLogger(__name__)
+
+__version__ = "20240204.0"
 MIN_RCLONE = 1, 63, 0
 
 

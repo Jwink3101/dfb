@@ -11,29 +11,30 @@ import shlex
 import atexit
 import shutil
 import queue
+import logging
+import gzip as gz
 from collections import defaultdict
 from textwrap import dedent
 from threading import Thread
 from functools import partial
 
-
-from . import debug, log, LOCK, MIN_RCLONE
+from . import LOCK, MIN_RCLONE
 from .dstdb import DFBDST, apath2rpath
-from .rclone import IGNORED_FILE_DATA, rcpathjoin
-from .checksumdb import SourceChecksumDB
+from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
 from .threadmapper import ReturnThread, thread_map_unordered as tmap
 from .utils import (
     star,
-    bytes2human,
+    human_readable_bytes,
     shell_runner,
     time_format,
-    shell_header,
     listify,
+    smart_open,
 )
 
 # For testing only
 from . import _FAIL
 
+logger = logging.getLogger(__name__)
 
 _r = repr
 
@@ -50,17 +51,22 @@ class Backup:
     def __init__(self, config):
         self.t0 = time.time()
         self.config = config
-        self.shell_out = []
+        self.errcount = 0
 
     def run(self):
         config = self.config
         cliconfig = config.cliconfig
+
+        config._set_auto()
+
         self.call_shell(mode="pre")
 
         self.src_rclone = config._config["src_rclone"]
 
-        log("rclone version:")
-        log(self.src_rclone.version.decode(), prefix="rclone")
+        ver = self.config.rc.call("core/version")
+        logger.info("rclone version: " + ".".join(str(i) for i in ver["decomposed"]))
+        for k, v in ver.items():
+            logger.debug(f"   {k}: {v}")
 
         ver = tuple(int(c) for c in self.src_rclone.version_dict["decomposed"])
         if ver < MIN_RCLONE:
@@ -87,80 +93,45 @@ class Backup:
         self.action_summary()
 
         if cliconfig.dry_run:
-            log("DRY-RUN. Exit")
+            logger.info("DRY-RUN. Exit")
             return
         elif cliconfig.interactive:
             r = input("Do you want to continue? [Y]/N:")
             if r.lower().startswith("n"):
                 return
 
-        if cliconfig.shell_script:
-            out = self.shell_out
+        self.dump = []
 
-            out.append("# dfb shell script output")
+        # Step 4: Transfers. If --dump, will not act but will populate self.dump
+        self.transfer()
+        self.reference() if config.rename_method == "reference" else self.move_by_copy()
+        self.delete()
 
-            for line in SHELL_SCRIPT_WARNING.split("\n"):
-                out.append(shlex.join(["echo", line]))
-            log(SHELL_SCRIPT_WARNING)
-
-            out.append("## Environment")
-            out.append(shell_header(config, cd=True))
-
-            out.append("\n## Transfers")
-            out.append(self.transfer(shell_script=True))
-
-            if config.rename_method == "reference":
-                out.append("\n## References (moves)")
-                out.append(self.reference(shell_script=True))
-            else:
-                out.append("\n## Copies (moves)")
-                out.append(self.move_by_copy(shell_script=True))
-
-            out.append("\n## Deletes")
-            out.append(self.delete(shell_script=True))
-
-            if cliconfig.shell_script == "-":
-                log.print("\n".join(out), flush=True)
-            else:
-                with open(cliconfig.shell_script, "wt") as fp:
-                    fp.write("\n".join(out))
-                log(f"Shell script written to {_r(cliconfig.shell_script)}")
+        if file := cliconfig.dump:
+            try:
+                fp = smart_open(file, "wt") if file != "-" else sys.stdout
+                for item in self.dump:
+                    print(
+                        json.dumps(item, ensure_ascii=False, separators=(",", ":")),
+                        file=fp,
+                        flush=True,
+                    )
+            finally:
+                if file != "-":
+                    fp.close()
+                    logger.info(f"Written to {_r(file)}")
             return
 
-        err = []
-        # Step 4: Transfer
-        try:
-            self.transfer()
-        except ValueError:
-            err.append("transfer")
-
-        if config.rename_method == "reference":
-            try:
-                self.reference()
-            except ValueError:
-                err.append("reference")
-        else:
-            try:
-                self.move_by_copy()
-            except ValueError:
-                err.append("move_by_copy")
-
-        try:
-            self.delete()
-        except ValueError:
-            err.append("delete")
-
-        if err:
-            raise ValueError(f"Error(s) occured in {', '.join(err)}")
-
         stats = self.run_stats()
-        log("-----")
-        log(stats)
-        log("-----")
+        logger.info("-----")
+        for line in stats.split("\n"):
+            logger.info(line)
+        logger.info("-----")
 
         self.call_shell(mode="post", stats=stats)
 
-        if not cliconfig.dry_run or not cliconfig.interactive:
+        if not cliconfig.dry_run:
+            self.upload_snapshots()
             self.upload_logs()
 
     def list_files(self, stats=None):
@@ -170,11 +141,14 @@ class Backup:
 
         if self.config.cliconfig.refresh:
             sthread = ReturnThread(target=self.list_src, kwargs=kwargs).start()
-            dthread = ReturnThread(target=self.dstdb.reset, kwargs=kwargs).start()
+            dthread = ReturnThread(
+                target=self.dstdb.reset,
+                kwargs=kwargs | {"use_snapshots": config.cliconfig.use_snapshots},
+            ).start()
             source_files = sthread.join()
             dthread.join()
         else:
-            log("Listing source")
+            logger.info("Listing source")
             source_files = self.list_src(**kwargs)
 
         self.src_files = {file["apath"]: file for file in source_files}
@@ -183,8 +157,8 @@ class Backup:
         d = (self.dstdb.fullrow2dict(row) for row in d)
         self.dst_files = {file["apath"]: file for file in d}
 
-        log(f"Found {len(self.src_files)} source Files")
-        log(f"Found {len(self.dst_files)} dest Files")
+        logger.info(f"Found {len(self.src_files)} source Files")
+        logger.info(f"Found {len(self.dst_files)} dest Files")
 
     def list_src(self, stats=None):
         config = self.config
@@ -195,8 +169,8 @@ class Backup:
 
         flags = []
 
-        compute_hashes = any(
-            [config.get_hashes, config.compare == "hash", config.renames == "hash"]
+        compute_hashes = (
+            config.get_hashes or config.compare == "hash" or config.renames == "hash"
         )
 
         modtime = (
@@ -204,23 +178,20 @@ class Backup:
             or config.compare == "mtime"
             or config.dst_compare == "mtime"
             or config.renames == "mtime"
-            or (compute_hashes and config.reuse_hashes == "mtime")
         )
 
-        if compute_hashes:
-            hash_flags = ["--hash"]
-            if config.hash_type:
-                if isinstance(config.hash_type, str):
-                    config.hash_type = [config.hash_type]
-                for htype in config.hash_type:
-                    hash_flags.extend(["--hash-type", htype])
+        logger.debug(f"{compute_hashes = }, {modtime = }")
 
-        debug(f"{compute_hashes = }, {modtime = }")
+        hash_flags = []
+        if compute_hashes:
+            hash_flags.append("--hash")
+            for htype in listify(config.hash_type):
+                hash_flags.extend(["--hash-type", htype])
 
         subdir = config.cliconfig.subdir or ""  # Make it empty instead of None
         if subdir:
-            msg = f"WARNING: subdir {_r(subdir)} specified. Filters may break!"
-            log(msg)
+            msg = f"subdir {_r(subdir)} specified. Filters may break!"
+            logger.warning(msg)
 
         if config.links == "link":
             flags.append("--links")
@@ -228,8 +199,6 @@ class Backup:
             flags.append("--skip-links")
         else:  # == 'copy'
             pass  # Already dealt with in config
-
-        hf0 = hash_flags if (compute_hashes and not config.reuse_hashes) else []
 
         rcfiles = config.src_rclone.listremote(
             filter_flags=config.filter_flags,
@@ -239,9 +208,7 @@ class Backup:
             metadata=config.metadata,
             only="files",
             epoch_time=True,
-            # This shouldn't be needed and I should use hashes and hashtypes but they
-            # do not work. I'll look into fixing that later but for now, if it ain't broke...
-            flags=flags + hf0,
+            flags=flags + hash_flags,
             subdir=subdir,
         )
 
@@ -269,7 +236,7 @@ class Backup:
                     m = f"{_r(link['real_apath'])} could not be read."
                     if os.path.islink(link["real_apath"]):
                         raise LinkError(m)
-                    debug(m + " Treating as a file")
+                    logger.debug(m + " Treating as a file")
                     del new["linkdata"]  # To treat as a file
 
             for k, v in file.items():
@@ -279,7 +246,7 @@ class Backup:
 
             files.append(new)
             if stats and (time.time() - t0) >= stats:  # TODO TEST
-                log(f"Source Listing Status: {c} items")
+                logger.info(f"Source Listing Status: {c} items")
                 t0 = time.time()
 
         # Testing
@@ -288,51 +255,7 @@ class Backup:
                 file.pop("checksum", None)
         # end testing
 
-        debug(f"Listed {len(files)} files")
-        if not compute_hashes or (compute_hashes and not config.reuse_hashes):
-            debug("No need to compute checksums or already computed. Done")
-            return files  # No hashes or already added
-
-        ## At this point, we need to add checksums and save it
-
-        checksumdb = SourceChecksumDB(config)
-
-        for file in files:
-            checksumdb.add_checksum_to_file(file)
-
-        # Determine which ones need a checksum and make them into a dict
-        # refereced by apath for quick lookup
-        wo_checksum = {}
-        for file in files:
-            if file.get("checksum", None):
-                continue
-            wo_checksum[file["apath"]] = file
-        log(f"Found {len(wo_checksum)} without checksums. Recomputing")
-
-        with tempfile.NamedTemporaryFile(mode="w+t") as fp:
-            fp.write("\n".join(wo_checksum))
-            fp.flush()
-            updated = config.src_rclone.listremote(
-                filter_flags=["--files-from", fp.name],
-                # fast_list=... # Would be in rclone_flags. Already set
-                mimetype=False,
-                modtime=False,
-                metadata=False,
-                only="files",
-                # epoch_time=True,
-                flags=flags + hash_flags,
-            )
-
-            # Update the item. This will update in files too
-            for upfile in updated:
-                hashes = upfile.get("Hashes", None)
-                if not hashes:
-                    debug(f"Missing hashes from {upfile}")
-                wo_checksum[upfile["Path"]]["checksum"] = hashes
-
-        # Update the DB
-        checksumdb.update_db(wo_checksum.values())
-
+        logger.debug(f"Listed {len(files)} files")
         return files
 
     def compare(self):
@@ -358,7 +281,7 @@ class Backup:
             # information at source. This enables things like using mtime for
             # source-to-source but not for source-to-dest
             if dfile["dstinfo"]:
-                debug(f"Updating {_r(apath)} with src info")
+                logger.debug(f"Updating {_r(apath)} with src info")
                 new = dfile.copy()
                 new.update(sfile)
                 new["dstinfo"] = 0
@@ -391,11 +314,8 @@ class Backup:
                     return False
 
             if attrib == "hash":
-                scheck = sfile.get("checksum", {})
-                dcheck = dfile.get("checksum", {})
-
-                scheck = scheck or {}  # Nones to empty dict
-                dcheck = dcheck or {}
+                scheck = sfile.get("checksum", {}) or {}  # Nones to empty dict
+                dcheck = dfile.get("checksum", {}) or {}
 
                 # This is a different case than no shared hashes. This happens when a remote
                 # doesn't return the hashes. Like rclone itself [1,2]. Ideally, we would
@@ -409,18 +329,15 @@ class Backup:
                 #         but-checksum-is-missing-is-undocumented-and-unexpected/39231/3
                 #
                 if (not scheck or not dcheck) and not config.error_on_missing_hash:
-                    msg = [
-                        "WARNING: Missing hashes on source and/or dest",
-                        f"             src: {_r(sfile['apath'])}",
-                        f"             dst: {_r(dfile['rpath'])}",
-                        "         Reverting to 'size' only",
-                    ]
-                    log("\n".join(msg))
+                    logger.info(f"WARNING: Missing hashes on source and/or dest")
+                    logger.info(f"             src: {_r(sfile['apath'])}")
+                    logger.info(f"             dst: {_r(dfile['rpath'])}")
+                    logger.info(f"         Reverting to 'size' only")
 
                 shared_hashes = set(scheck).intersection(set(dcheck))
                 if not shared_hashes and config.error_on_missing_hash:
                     m = "Non compatible (or non existent) hashes. Change attributes"
-                    log(m)
+                    logger.info(m)
                     msg.append(m)
                     msg.append(f"source = {list(scheck)}, dest = {list(dcheck)}")
                     raise NoCommonHashError(m)
@@ -434,7 +351,7 @@ class Backup:
             return True
         finally:
             msg = " ".join(msg)
-            debug(msg)
+            logger.debug(msg)
 
     def track_moves(self):
         renames = self.config.renames
@@ -443,7 +360,7 @@ class Backup:
         self.moves = []
 
         if not self.deleted or not self.new:
-            log("No new *and* deleted files. No rename tracking")
+            logger.info("No new *and* deleted files. No rename tracking")
             return
 
         # The algorithm for this is pretty simple. When a file is
@@ -476,10 +393,10 @@ class Backup:
             if len(dfiles) == 1:
                 self.moves.append((dfiles[0], sfile))  # dfile,moved sfile
             elif not dfiles:
-                debug(f"no moves for deleted file {_r(apath)}")
+                logger.debug(f"no moves for deleted file {_r(apath)}")
                 continue
             else:
-                log(f"Too many matches for {_r(apath)}. Not moving")
+                logger.info(f"Too many matches for {_r(apath)}. Not moving")
 
         # Now we need to remove the moves from new and delete
         undelete = set()
@@ -492,13 +409,12 @@ class Backup:
         # DO NOT UNDELETE!!! We still want them to be "deleted" with a delete marker
         # NO: self.deleted[:] = list(set(self.deleted) - undelete)
 
-    def transfer(self, shell_script=False):
+    def transfer(self):
         config = self.config
         # dst_rclone = self.config.dst_rclone
 
         # The upload pipeline is done in a functional programing(esque) fashion
         # to better enable concurrency.
-        self.errcount = 0
 
         comb = self.new + self.modified
         N = len(comb)
@@ -515,32 +431,14 @@ class Backup:
 
         files = map(_apath2file, apaths)
 
-        if shell_script:
-            out = []
-            cmd = [config.rclone_exe] + config.rclone_flags
-            cmd.extend(["copyto", "--no-check-dest"])
-
-            for file in files:
-                sfile = rcpathjoin(self.config.src, file["apath"])
-                dfile = rcpathjoin(self.config.dst, file["rpath"])
-
-                link = file.get("linkdata", None)
-
-                if link:
-                    echo = shlex.join(["printf", link["link_dest"]])
-                    cmdt = cmd.copy()
-                    cmdt[cmdt.index("copyto")] = "rcat"
-                    rcat = shlex.join(cmdt + [dfile])
-                    out.append(f"{echo} | {rcat}")
-                else:
-                    out.append(shlex.join(cmd + [sfile, dfile]))
-
-            return "\n".join(out)
+        if config.cliconfig.dump:
+            self.dump.extend(files)
+            return
 
         rc = self.config.rc
-        rc.start_rc()
+        rc.start()
 
-        def _transfer_rc(file, *, rc):
+        def _transfer(file):
             try:
                 sfile = self.config.src, file["apath"]
                 dfile = self.config.dst, file["rpath"]
@@ -549,12 +447,12 @@ class Backup:
 
                 msg = f"Uploading {_r(file['apath'])} to {_r(file['rpath'])}"
 
-                log(msg)
+                logger.info(msg)
 
                 if link:
                     rc.write(dfile, link["link_dest"], _config={"NoCheckDest": True})
                     m = f"apath = {_r(file['apath'])} is a LINK to {_r(link['link_dest'])}"
-                    debug(m)
+                    logger.debug(m)
                 else:
                     rc.copyfile(
                         src=sfile,
@@ -566,23 +464,17 @@ class Backup:
                     )
                 return file
             except Exception as EE:
-                msg = [f"ERROR: Could not upload {_r(file['apath'])}."]
-                msg.append(f"Error: {EE}")
-                log("\n".join(msg))
+                logger.error(f"Upload Error: {_r(file['apath'])}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
-        files = tmap(partial(_transfer_rc, rc=rc), files, Nt=config.concurrency)
+        files = tmap(_transfer, files, Nt=config.concurrency)
         files = filter(bool, files)
         # We could theoretically do an insert_many but that could lock the DB and/or
         # require we accumulate. Instead, let it go right to insert which closes the DB
         # each time. This is trivial compared to upload times. Plus, we want an upload
         # to be recorded in the DB right away
-        #
-        # This does nothing in capture mode
-        files = map(
-            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
-        )
+        files = map(self.dstdb.insert, files)
 
         stats = StatsThread(self.config, N=N, daemon=True).start()
 
@@ -592,21 +484,11 @@ class Backup:
 
         stats.join()
 
-        if self.errcount:
-            msg = "ERROR: At least one transfer did not work."
-            log(msg)
-            raise ValueError(msg)
-
-        # For testing only
-        if "backup_transfer" in _FAIL:
-            raise ValueError()
-
-    def reference(self, shell_script=False):
+    def reference(self):
         config = self.config
 
-        # The upload pipeline is done in a functional programing(esque) fashion
+        # The upload pipeline is done in a functional(esque) fashion
         # to better enable concurrency.
-        self.errcount = 0
         moves = iter(self.moves)
 
         # Moves are already paired as original_dfile,moved_sfile
@@ -626,41 +508,28 @@ class Backup:
 
         files = map(star(_build_new_file), moves)
 
-        if shell_script:
-            out = []
-            cmd = [config.rclone_exe] + config.rclone_flags
-            cmd.extend(["rcat", "--no-check-dest"])
-            for file in files:
-                ref_rpath = file["ref_rpath"]
-                rpath = file["rpath"]
-
-                ref = {
-                    "ver": 2,
-                    "rel": os.path.relpath(rpath, os.path.dirname(ref_rpath)),
-                }
-                reftxt = json.dumps(ref)
-
-                dst = rcpathjoin(config.dst, ref_rpath)
-
-                echo = shlex.join(["printf", reftxt])
-                rcat = shlex.join(cmd + [dst])
-
-                out.append(f"{echo} |  {rcat}")
-            return "\n".join(out)
+        if config.cliconfig.dump:
+            self.dump.extend(files)
+            return
 
         rc = self.config.rc
-        rc.start_rc()
+        rc.start()
 
         def _upload_ref(file):
             original = file["original"]
             ref_rpath = file["ref_rpath"]
             rpath = file["rpath"]
 
-            ref = {"ver": 2, "rel": os.path.relpath(rpath, os.path.dirname(ref_rpath))}
+            ref = {
+                "ver": 2,
+                "rel": os.path.relpath(rpath, os.path.dirname(ref_rpath)),
+            }
             reftxt = json.dumps(ref)
             try:
-                log(
-                    f"Moving {_r(original)} to {_r(file['apath'])} with {_r(ref_rpath)}."
+                logger.info(
+                    f"Moving {_r(original)} to "
+                    f"{_r(file['apath'])} with "
+                    f"{_r(ref_rpath)}."
                 )
                 rc.write(
                     (config.dst, ref_rpath),
@@ -668,36 +537,23 @@ class Backup:
                 )
                 return file
             except Exception as EE:
-                msg = [f"ERROR: Could not upload {_r(file['apath'])}."]
-                msg.append(f"Error: {EE}")
-                log("\n".join(msg))
+                logger.error(f"Reference Error: {_r(file['apath'])}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
         files = tmap(_upload_ref, files, Nt=config.concurrency)
         files = filter(bool, files)
-        files = map(
-            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
-        )
+        files = map(self.dstdb.insert, files)
 
         # Make them work
         for file in files:
             pass
-        if self.errcount:
-            msg = "ERROR: At least one reference (move) did not work."
-            log(msg)
-            raise ValueError(msg)
 
-        # For testing only
-        if "backup_reference" in _FAIL:
-            raise ValueError()
-
-    def move_by_copy(self, shell_script=False):
+    def move_by_copy(self):
         config = self.config
 
         # The upload pipeline is done in a functional programing(esque) fashion
         # to better enable concurrency.
-        self.errcount = 0
         moves = iter(self.moves)
 
         def _build_copiedfile(original_dfile, moved_sfile):
@@ -710,34 +566,27 @@ class Backup:
             new["rpath"] = apath2rpath(new["apath"], ts)
             new["source_rpath"] = original_dfile["rpath"]
             new["timestamp"] = ts
+            new["isref"] = False
             new["dstinfo"] = False  # Since this is coming from the source
             return new
 
         files = map(star(_build_copiedfile), moves)
 
-        if shell_script:
-            out = []
-            cmd = [config.rclone_exe] + config.rclone_flags
-            cmd.extend(["copyto", "--no-check-dest"])
-            for file in files:
-                sfile = rcpathjoin(self.config.dst, file["source_rpath"])
-                dfile = rcpathjoin(self.config.dst, file["rpath"])
-
-                out.append(shlex.join(cmd + [sfile, dfile]))
-
-            return "\n".join(out)
+        if config.cliconfig.dump:
+            self.dump.extend(files)
+            return
 
         rc = self.config.rc
-        rc.start_rc()
+        rc.start()
 
-        def _copy_rc(file, *, rc):
+        def _copy(file):
             try:
                 msg = f'"Moving" {_r(file["original"])} to {_r(file["apath"])} via copy'
 
                 sfile = rcpathjoin(self.config.dst, file["source_rpath"])
                 dfile = rcpathjoin(self.config.dst, file["rpath"])
 
-                log(msg)
+                logger.info(msg)
 
                 rc.copyfile(
                     src=sfile,
@@ -749,37 +598,24 @@ class Backup:
                 )
                 return file
             except Exception as EE:
-                msg = [f"ERROR: Could not copy {_r(file['apath'])}."]
-                msg.append(f"Error: {EE}")
-                log("\n".join(msg))
+                logger.error(f"Copy Error: {_r(file['apath'])}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
-        files = tmap(partial(_copy_rc, rc=rc), files, Nt=config.concurrency)
+        files = tmap(_copy, files, Nt=config.concurrency)
         files = filter(bool, files)
-        files = map(
-            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
-        )
+        files = map(self.dstdb.insert, files)
 
         # Make them work
         for file in files:
             pass
-        if self.errcount:
-            msg = "ERROR: At least one move (via copy) did not work."
-            log(msg)
-            raise ValueError(msg)
 
-        # For testing only
-        if "backup_copy" in _FAIL:
-            raise ValueError()
-
-    def delete(self, shell_script=False):
+    def delete(self):
         config = self.config
         # dst_rclone = self.config.dst_rclone
 
         # The upload pipeline is done in a functional programing(esque) fashion
         # to better enable concurrency.
-        self.errcount = 0
         apaths = iter(self.deleted)
 
         def _apath2file(apath):
@@ -794,96 +630,72 @@ class Backup:
 
         files = map(_apath2file, apaths)
 
-        if shell_script:
-            out = []
-            cmd = [config.rclone_exe] + config.rclone_flags
-            cmd.extend(["rcat", "--no-check-dest"])
-            for file in files:
-                dst = rcpathjoin(config.dst, file["rpath"])
-
-                echo = shlex.join(["echo", "DEL"])
-                rcat = shlex.join(cmd + [dst])
-
-                out.append(f"{echo} |  {rcat}")
-            return "\n".join(out)
+        if config.cliconfig.dump:
+            self.dump.extend(files)
+            return
 
         rc = self.config.rc
-        rc.start_rc()
+        rc.start()
 
         def _delete(file):
             dfile = file["rpath"]
             try:
-                log(f"Deleting {_r(file['apath'])} with {_r(dfile)}.")
-                rc.write(
-                    (config.dst, dfile),
-                    b"DEL",
-                )
+                logger.info(f"Deleting {_r(file['apath'])} with {_r(dfile)}.")
+                rc.write((config.dst, dfile), b"DEL")
                 return file
-            except subprocess.CalledProcessError as EE:
-                log(f"ERROR: Could not upload {_r(file['rpath'])}.")
-                log(f"Error: {EE}")
+            except Exception as EE:
+                logger.error(f"Delete Error: {_r(file['apath'])}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
         files = tmap(_delete, files, Nt=config.concurrency)
         files = filter(bool, files)
-        files = map(
-            partial(self.dstdb.insert, savelog=self.config.upload_snapshots), files
-        )
+        files = map(self.dstdb.insert, files)
 
         # Make them work
         for file in files:
             pass
 
-        if self.errcount:
-            msg = "ERROR: At least one delete did not work."
-            log(msg)
-            raise ValueError(msg)
-
-        # For testing only
-        if "backup_delete" in _FAIL:
-            raise ValueError()
-
     def action_summary(self):
         self.action_summary_text = []
 
-        _p = debug
+        _p = logger.debug
         if self.config.cliconfig.dry_run or self.config.cliconfig.interactive:
-            _p = log
+            _p = logger.info
 
         m = f"New: {self.summary(self.new)}"
         self.action_summary_text.append(m)
-        log(m)
+        logger.info(m)
         for file in self.new:
             _p(f"   {_r(file)}")
 
         m = f"Modified: {self.summary(self.modified)}"
         self.action_summary_text.append(m)
-        log(m)
+        logger.info(m)
         for file in self.modified:
             _p(f"   {_r(file)}")
 
         m = f"Deleted: {self.summary(self.deleted,src=False)}"
         self.action_summary_text.append(m)
-        log(m)
+        logger.info(m)
         for file in self.deleted:
             _p(f"   {_r(file)}")
 
         m = f"Moves: {self.summary([f[0]['apath'] for f in self.moves],src=False)}"
         self.action_summary_text.append(m)
-        log(m)
+        logger.info(m)
         for file in self.moves:
             _p(f"   {_r(file[0]['apath'])} --> {_r(file[1]['apath'])}")
 
     def summary(self, files, src=True):
         flist = self.src_files if src else self.dst_files
         size = sum(flist[file]["size"] for file in files)
-        num, units = bytes2human(size)
+        num, units = human_readable_bytes(size)
         s = "s" if len(files) != 1 else ""
         return f"{len(files)} file{s} ({num:0.2f} {units})"
 
     def run_stats(self):
-        stats = []
+        stats = [f"Errors: {self.errcount}"]
         select = """
             SUM(CASE 
                 WHEN (size >= 0 AND (isref IS NULL OR isref = 0) )
@@ -892,12 +704,12 @@ class Backup:
             COUNT(size) as num
             """
         cur = self.dstdb.snapshot(select=select).fetchone()
-        num, units = bytes2human(cur["totsize"])
+        num, units = human_readable_bytes(cur["totsize"])
         s = "s" if cur["num"] != 1 else ""
         stats.append(f"Current {cur['num']} file{s} ({num:0.2f} {units})")
 
         tot = self.dstdb.db().execute(f"SELECT {select} FROM items").fetchone()
-        num, units = bytes2human(tot["totsize"])
+        num, units = human_readable_bytes(tot["totsize"])
         s = "s" if tot["num"] != 1 else ""
         stats.append(f"Total {tot['num']} file{s} ({num:0.2f} {units})")
 
@@ -906,7 +718,7 @@ class Backup:
         return "\n".join(stats)
 
     def call_shell(self, *, mode, stats=""):
-        dry = self.config.cliconfig.dry_run or self.config.cliconfig.shell_script
+        dry = self.config.cliconfig.dry_run
 
         if mode == "pre":
             cmds = self.config.pre_shell
@@ -914,10 +726,14 @@ class Backup:
             cmds = self.config.post_shell
 
         if not cmds:
-            debug(f"No cmds for {mode = }")
+            logger.debug(f"No cmds for {mode = }")
             return
 
-        env = {"CONFIGDIR": self.config._config["__dir__"], "STATS": stats}
+        env = {
+            "CONFIGDIR": self.config._config["__dir__"],
+            "STATS": stats,
+            "ERRS": str(self.errcount),
+        }
 
         returncode = shell_runner(cmds, dry=dry, env=env, prefix=f"{mode}.shell")
 
@@ -926,73 +742,58 @@ class Backup:
 
     def upload_logs(self):
         config = self.config
-        # dst_rclone = self.config.dst_rclone
 
-        if not log.log_file.exists():
-            debug("no log file")
+        if not config.logfile.exists():
             return
 
         name = f"{self.config.now.dt}Z.log"
-        log_dests = [
-            rcpathjoin(log_dest, name) for log_dest in listify(config.log_dest)
-        ]
+        log_dests = [rcpathjoin(l, name) for l in listify(config.log_dest)]
 
-        if config.upload_logs:
-            log_dests.append((config.dst, f".dfb/logs/{name}"))
+        log_dests.append((config.dst, f".dfb/logs/{name}"))
 
         if not log_dests:
-            debug("no log destinations")
+            logger.debug("no log destinations")
             return
 
         # Need to copy the log file since it may change in the process of the upload
         # from the calls itself
-        log_copy = log.log_file.with_stem("log_copy")
-        shutil.copy2(log.log_file, log_copy)
+        log_copy = config.logfile.with_stem("log_copy")
+        shutil.copy2(config.logfile, log_copy)
 
         for log_dest in log_dests:
             dtxt = rcpathjoin(*listify(log_dest))
-            log(f"Uploading log to {_r(dtxt)}")
+            logger.info(f"Uploading log to {_r(dtxt)}")
             try:
                 config.rc.copyfile(
                     src=log_copy,
                     dst=log_dest,
                 )
             except Exception as e:
-                log(f"Failed: {e}")
+                logger.error(f"Failed: {e}")
 
-        if self.config.upload_snapshots:
-            name = f"{self.config.now.dt}Z.jsonl"
-            snap_src = self.config.tmpdir / name
-            snap_dst = (config.dst, f".dfb/snapshots/{name}")
-            try:
-                config.rc.copyfile(
-                    src=snap_src,
-                    dst=snap_dst,
-                )
-            except Exception as e:
-                log(f"Failed: {e}")
+    def upload_snapshots(self):
+        name = f"{self.config.now.dt}Z.jsonl"
+        snap_src0 = self.config.tmpdir / name
 
+        if not snap_src0.exists() or not snap_src0.stat().st_size:
+            return
 
-SHELL_SCRIPT_WARNING = dedent(
-    """\
-    !!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!
-    ╔═══════════════════════════════════════════════════════╗
-    ║                                                       ║
-    ║  #     #    #    ######  #     # ### #     #  #####   ║
-    ║  #  #  #   # #   #     # ##    #  #  ##    # #     #  ║
-    ║  #  #  #  #   #  #     # # #   #  #  # #   # #        ║
-    ║  #  #  # #     # ######  #  #  #  #  #  #  # #  ####  ║
-    ║  #  #  # ####### #   #   #   # #  #  #   # # #     #  ║
-    ║  #  #  # #     # #    #  #    ##  #  #    ## #     #  ║
-    ║   ## ##  #     # #     # #     # ### #     #  #####   ║
-    ║                                                       ║
-    ╚═══════════════════════════════════════════════════════╝
-    The local database will **NOT** be updated if the shell 
-    script is run manually. You MUST run with --refresh
-    next time you use dfb!
-    !!!!!!!!!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!!
-    """
-)
+        snap_srcz = self.config.tmpdir / f"{name}.gz"
+
+        with gz.open(str(snap_srcz), "wb") as fz, snap_src0.open("rb") as fu:
+            while block := fu.read(3 * 1024 * 1024):  # 3 MiB
+                fz.write(block)
+
+        self.config.rc.copyfile(
+            src=snap_srcz,
+            dst=(
+                self.config.dst,
+                # Upload to dated dirs too so that they don't fill with too many
+                # files if this is run often.
+                f".dfb/snapshots/{self.config.now.obj.strftime('%Y/%m')}/{name}.gz",
+            ),
+            _config={"NoCheckDest": True},
+        )
 
 
 class StatsThread(Thread):
@@ -1032,8 +833,8 @@ class StatsThread(Thread):
 
             # Get the average speed. But use our own measure of totals
             stats = self.config.rc.call("core/stats")
-            speednum, speedunits = bytes2human(stats["speed"])
-            totnum, totunits = bytes2human(stats["totalBytes"])
+            speednum, speedunits = human_readable_bytes(stats["speed"])
+            totnum, totunits = human_readable_bytes(stats["totalBytes"])
             dt = time_format(stats["elapsedTime"])
 
             msg = [f"STATS: Elapsed {dt};"]
@@ -1042,9 +843,9 @@ class StatsThread(Thread):
             # stats['totalTransfers'] includes active so use self.fcount
 
             msg.append(f"Total {self.fcount}/{self.N} ({totnum:0.2f} {totunits})")
-            log(" ".join(msg))
+            logger.info(" ".join(msg))
 
     def join(self, *a, **k):
         self.stop.put(True)
         super().join(*a, **k)
-        debug("Joined stats thread")
+        logger.debug("Joined stats thread")
