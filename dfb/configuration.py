@@ -591,5 +591,5 @@ fail_shell = ""
 # This should only be changed by the user when migrating from an older config
 # to a newer one. Just because the current version of dbf and the version
 # below do not match, it does not mean the run won't work.
-_version = "20240130.0"
+_version = "__VERSION__"
 '''
