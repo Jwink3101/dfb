@@ -147,14 +147,14 @@ class DFBDST:
             self._load_snapshots()
             files = (self._apply_snapshot_file(file) for file in files)
 
-        files = (DFBDST.dict2fullrow(file) for file in files)
-        files = list(files)  # ALWAYS wait before an executemany to not lock the DB
-        with self.db() as db:
-            db.executemany(
-                f"""INSERT INTO items 
-                    VALUES ({','.join('?' for _ in DFBDST.COLS)})""",
-                files,
+        db = self.db()
+        for ii, file in enumerate(files):
+            db.execute(
+                f"INSERT INTO items VALUES ({','.join('?' for _ in DFBDST.COLS)})",
+                DFBDST.dict2fullrow(file),
             )
+            if ii % 100 == 0:  # Frequent commits but not every time.
+                db.commit()
         db.commit()
         db.close()
 
@@ -288,15 +288,17 @@ class DFBDST:
         files = map(star(_update), files)
 
         # Insert into DB in the main thread.
-        files = map(DFBDST.dict2fullrow, files)
-        for file in files:
+        for ii, file in enumerate(files):
             db.execute(
                 f"REPLACE INTO items VALUES ({','.join('?' for _ in DFBDST.COLS)})",
-                file,
+                DFBDST.dict2fullrow(file),
             )
-            logger.info(f"updated reference {_r(file[-3])}")
-            db.commit()
-
+            logger.info(f"updated reference {_r(file['ref_rpath'])}")
+            # Fetching references is slow so commit more often to make sure we don't
+            # lose much. Plus, we are waiting for updates
+            if ii % 10 == 0:
+                db.commit()
+        db.commit()
         db.close()
 
     def _load_snapshots(self):
@@ -348,8 +350,16 @@ class DFBDST:
                     f"Updated reference for {_r(file['rpath'])} "
                     f"from {_r(snapfile['rpath'])}"
                 )
+                keep = {
+                    "apath": file["apath"],
+                    "timestamp": file["timestamp"],
+                    "ref_rpath": file["rpath"],
+                    "isref": 1,
+                }
+
                 file.clear()
-                file |= snapfile
+                file |= snapfile | keep
+
             return file
         # ONLY apply if the file is listed already. Otherwise, see dbimport. This
         # includes ignore prune entries
@@ -492,7 +502,6 @@ class DFBDST:
 
         with self.db() as db:
             db.execute(sql, DFBDST.dict2fullrow(file))
-        db.commit()
 
         with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
             print(json.dumps(file), file=fp, flush=True)
