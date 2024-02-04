@@ -138,6 +138,10 @@ class DFBDST:
         self.init()
 
         files = list(self._relist(stats=stats))  # Need them all to get snapshots
+        logger.info(
+            f"Found {len(files)} at dest "
+            f"with {sum(f.get('isref',0) == 2 for f in files)} reference(s)"
+        )
 
         if use_snapshots:
             self._load_snapshots()
@@ -219,6 +223,11 @@ class DFBDST:
             files = db.execute("""SELECT * FROM items WHERE isref = 2""")
             files = files.fetchall()
 
+        if not files:
+            return
+
+        logger.info(f"Need to fetch {len(files)} references")
+
         # Multi-thread reading from the remote to get the new rpath
         # and reading from the DB to get the info
         rc = self.config.rc
@@ -279,20 +288,21 @@ class DFBDST:
         files = map(star(_update), files)
 
         # Insert into DB in the main thread.
-        # ALWAYS wait before an executemany since that could lock the DB
         files = map(DFBDST.dict2fullrow, files)
-        files = list(files)
-        with db:
-            db.executemany(
+        for file in files:
+            db.execute(
                 f"REPLACE INTO items VALUES ({','.join('?' for _ in DFBDST.COLS)})",
-                files,
+                file,
             )
-        db.commit()
+            logger.info(f"updated reference {_r(file[-3])}")
+            db.commit()
+
         db.close()
 
     def _load_snapshots(self):
         # May have to rethink this for memory but that would be a *lot* of files
         self._snapshot_dict = {}
+        self._snapshot_dict_ref = {}
 
         logger.debug("Loading snapshots from remote")
 
@@ -317,20 +327,30 @@ class DFBDST:
             c = 0
             for line in smart_open(str(snap)):
                 line = json.loads(line)
-                if line.get("_action", None) in {"prune", "comment"}:
+                if (
+                    line.get("_action", None) in {"prune", "comment"}
+                    or line["size"] < 0
+                ):
                     continue
 
-                if line.get("isref"):  # Must be the original, not a reference
-                    continue
-                self._snapshot_dict[line["rpath"]] = line
+                if line.get("isref", False):
+                    self._snapshot_dict_ref[line["ref_rpath"]] = line
+                else:
+                    self._snapshot_dict[line["rpath"]] = line
+
                 c += 1
             logger.info(f"Loaded {c} items from {snap.name}")
 
     def _apply_snapshot_file(self, file):
-        # References should be filled in. 2 is just a holding flag
-        if file.get("isref", 0) == 2:
+        if file.get("isref", False) == 2:
+            if snapfile := self._snapshot_dict_ref.get(file["rpath"]):
+                logger.info(
+                    f"Updated reference for {_r(file['rpath'])} "
+                    f"from {_r(snapfile['rpath'])}"
+                )
+                file.clear()
+                file |= snapfile
             return file
-
         # ONLY apply if the file is listed already. Otherwise, see dbimport. This
         # includes ignore prune entries
         if not (snapfile := self._snapshot_dict.get(file["rpath"], None)):
@@ -339,7 +359,8 @@ class DFBDST:
         # They should be the same by rpath but just do a quick sanity check
         if file["size"] != snapfile["size"]:
             logger.warning(
-                f"snapshot for rpath = {_r(file['rpath'])} does not match as it should"
+                f"snapshot for rpath = {_r(file['rpath'])} does not match "
+                "size as it should. Ignoring"
             )
             return file
 

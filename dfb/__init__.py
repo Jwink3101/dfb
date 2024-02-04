@@ -7,7 +7,7 @@ from .timestamps import timestamp_parser
 
 logger = logging.getLogger(__name__)
 
-__version__ = "20240204.3"
+__version__ = "20240204.4"
 MIN_RCLONE = 1, 63, 0
 
 

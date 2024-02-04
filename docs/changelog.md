@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20240204.1 .. 20240204.4
+
+- Snapshots are used to fill reference files. This is a MAJOR improvement if you have a lot of references since they all do not have to be read again
+- snapshot output can be auto-compressed
+- Bug Fixes
+
 ## 20240204.0
 
 **BIG UPDATE**

@@ -467,7 +467,8 @@ def parse(argv=None, shebanged=False):
     snap.add_argument(
         "--output",
         help="""
-        Specify an output file. Otherwise will print to stdout""",
+        Specify an output file. Otherwise will print to stdout. If the file ends in .gz
+        or .xz, will use the respective compression.""",
     )
 
     versions = subparsers["versions"] = subpar.add_parser(

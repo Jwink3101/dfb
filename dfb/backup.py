@@ -327,10 +327,10 @@ class Backup:
                 #         but-checksum-is-missing-is-undocumented-and-unexpected/39231/3
                 #
                 if (not scheck or not dcheck) and not config.error_on_missing_hash:
-                    logger.info(f"WARNING: Missing hashes on source and/or dest")
-                    logger.info(f"             src: {_r(sfile['apath'])}")
-                    logger.info(f"             dst: {_r(dfile['rpath'])}")
-                    logger.info(f"         Reverting to 'size' only")
+                    logger.warning(f"Missing hashes on source and/or dest")
+                    logger.warning(f"  src: {_r(sfile['apath'])}")
+                    logger.warning(f"  dst: {_r(dfile['rpath'])}")
+                    logger.warning(f"Reverting to 'size' only")
 
                 shared_hashes = set(scheck).intersection(set(dcheck))
                 if not shared_hashes and config.error_on_missing_hash:

@@ -177,7 +177,7 @@ def test_main(rename_method):
     assert A == B
 
     ## Test reference format v2
-    test.call("refresh", "-vv")
+    test.call("refresh", "-vv", "--no-use-snapshot")
     log = test.logs[-1][0]
     if rename_method == "reference":
         assert "Reference 'moved_again.19700101000005R.txt' is v2" in log
@@ -185,9 +185,17 @@ def test_main(rename_method):
         # test format v1
         with open("dst/moved_again.19700101000005R.txt", "wt") as fp:
             fp.write("sub/move.19700101000001.txt")
-        test.call("refresh", "-vv")
+        test.call("refresh", "-vv", "--no-use-snapshot")
         log = test.logs[-1][0]
         assert "Reference 'moved_again.19700101000005R.txt' is v1 (implied)" in log
+
+        # Do it again with snapshot
+        test.call("refresh", "-vv")
+        log = test.logs[-1][0]
+        assert (
+            "Updated reference for 'moved_again.19700101000005R.txt' "
+            "from 'sub/move.19700101000001.txt"
+        ) in log
 
     # ## Do the snapshots match the reality?
 
@@ -666,14 +674,16 @@ def test_missing_ref():
         pass
     # -
 
-    test.call("refresh")
+    test.call("refresh", "--no-use-snapshot")
     out = test.ls("-q")
 
     log = "\n".join(l[0] for l in test.logs[-2:])
     assert (
-        "WARNING: File 'fileONE.19700101000003R.txt' references 'file1.19700101000001.txt' but it is missing. Will just be treated as deleted"
-        in log
-    )
+        "WARNING: File 'fileONE.19700101000003R.txt' "
+        "references 'file1.19700101000001.txt' but it is missing. "
+        "Will just be treated as deleted"
+    ) in log
+
     assert "file2.txt" in out
 
     out = test.ls("-d")

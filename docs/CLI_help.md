@@ -440,7 +440,8 @@ optional arguments:
                         deleted files
   -e, --export          Export mode. Includes _all_ entries, not just the final one.
                         Ignored
-  --output OUTPUT       Specify an output file. Otherwise will print to stdout
+  --output OUTPUT       Specify an output file. Otherwise will print to stdout. If the
+                        file ends in .gz or .xz, will use the respective compression.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing

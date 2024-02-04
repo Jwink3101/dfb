@@ -9,7 +9,7 @@ import logging
 
 from . import LOCK
 from .dstdb import DFBDST
-from .utils import tabulate, human_readable_bytes, head_tail_table
+from .utils import tabulate, human_readable_bytes, head_tail_table, smart_open
 from .timestamps import timestamp_parser
 from .rclonerc import rcpathjoin
 
@@ -33,8 +33,9 @@ def snapshot(config):
     rows = (dstdb.fullrow2dict(row) for row in rows)
 
     if args.output:
-        swap = args.output + ".swp"
-        with open(swap, "wt") as fp:
+        parent, name = os.path.split(args.output)
+        swap = os.path.join(parent, f".swap.{name}")
+        with smart_open(swap, "wt") as fp:
             for row in rows:
                 json.dump(row, fp)
                 fp.write("\n")
