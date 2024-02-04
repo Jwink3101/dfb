@@ -387,7 +387,9 @@ def smart_splitext(file):
     if not mimetypes.inited:
         mimetypes.init()
 
-    parts = file.split(".")
+    parent, name = os.path.split(file)
+
+    parts = name.split(".")
     if not parts[0]:  # leading dot
         parts[1] = f".{parts[1]}"
         parts = parts[1:]
@@ -403,4 +405,4 @@ def smart_splitext(file):
 
     stem = ".".join(parts[:-ix])
     ext = "." + ".".join(parts[-ix:])  # No ext covered above
-    return stem, ext
+    return os.path.join(parent, stem), ext

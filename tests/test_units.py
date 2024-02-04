@@ -47,6 +47,10 @@ REG_TEST = {
     ".tar.txt": (".tar", ".txt"),
     ".jpg.gif.tar.txt": (".jpg", ".gif.tar.txt"),
     ".txt.txt": (".txt", ".txt"),
+    # Longer path
+    "this/has/a.dot/file.ext": ("this/has/a.dot/file", ".ext"),
+    "this/has/a.dot/file.jpg.ext": ("this/has/a.dot/file", ".jpg.ext"),
+    "this/has/a.dot/noext": ("this/has/a.dot/noext", ""),
 }
 
 
