@@ -376,6 +376,17 @@ class Backup:
         for apath in self.new:
             sfile = self.src_files[apath]
 
+            if (
+                self.config.min_rename_size
+                and sfile["size"] <= self.config.min_rename_size
+            ):
+                logger.debug(
+                    f"Skipped rename track on {_r(sfile['apath'])}. "
+                    f"size = {sfile['size']} <= min_rename_size = "
+                    f"{self.config.min_rename_size}"
+                )
+                continue
+
             dfiles0 = del_by_size[sfile["size"]]  # list of candidate paths
             dfiles = []
             for dfile in dfiles0:

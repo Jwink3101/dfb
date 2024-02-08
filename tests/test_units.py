@@ -7,7 +7,7 @@ p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
-from dfb.utils import smart_splitext, time2all, head_tail_table
+from dfb.utils import smart_splitext, time2all, head_tail_table, parse_bytes
 from dfb.dstdb import rpath2apath, apath2rpath
 
 DATED_SPLIT_TESTS = {
@@ -119,6 +119,10 @@ def test_apath2rpath():
         assert a2r(apath, ts=1706262301, flag="") == gold
         assert a2r(apath, ts=1706262301, flag="D") == gold.replace("501", "501D")
         assert a2r(apath, ts=1706262301, flag="R") == gold.replace("501", "501R")
+
+    apath = "03/gallery4.png@resize=376,812&ssl=1"
+    rpath = apath2rpath(apath, ts=1)
+    assert rpath2apath(rpath) == (apath, 1, "")
 
 
 def test_time2all():
@@ -337,6 +341,30 @@ def test_head_tail_table():
     ) == [[1, 2], ["...", "..."], [7, 8]]
 
 
+def test_parse_bytes():
+    tests = [
+        ("23234", 23234),
+        ("23234b", 23234),
+        ("123k", 123 * 1000),
+        ("123 kilobytes", 123 * 1000),
+        ("123 kb", 123 * 1000),
+        ("123 kib", 123 * 1024),
+        ("123 kibi", 123 * 1024),
+        ("123 kibibytes", 123 * 1024),
+        ("123mi", 128974848),
+        ("12.3tB", 12300000000000),
+        ("12.3t", 12300000000000),
+        ("12.3ti", 13523993021644),
+        ("12.3tib", 13523993021644),
+        ("0.0002t", 200000000),
+        (12345, 12345),
+        (12.345, 12),
+    ]
+
+    for inval, gold in tests:
+        assert parse_bytes(inval) == gold
+
+
 if __name__ == "__main__":
     # Names and split
     test_smart_splitext()
@@ -346,6 +374,7 @@ if __name__ == "__main__":
     # Others
     test_time2all()
     test_head_tail_table()
+    test_parse_bytes()
 
     print("=" * 50)
     print(" All Passed ".center(50, "="))

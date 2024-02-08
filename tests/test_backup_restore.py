@@ -1137,6 +1137,47 @@ def test_auto():
     }
 
 
+def test_min_size():
+    test = testutils.Tester(name="min_size")
+
+    test.config["min_rename_size"] = "0.000005 mb"  # 5 bytes
+    test.write_config()
+
+    test.write_pre("src/small0.txt", "0")
+    test.write_pre("src/large0.txt", "0123456789")
+
+    test.backup(offset=1)
+
+    shutil.move("src/small0.txt", "src/small1.txt")
+    shutil.move("src/large0.txt", "src/large1.txt")
+
+    test.backup("-v", offset=3)
+
+    assert test.read("dst/small1.19700101000003.txt") == "0", "moved"
+    assert not os.path.exists("dst/small1.19700101000003R.txt")
+
+    assert json.loads(test.read("dst/large1.19700101000003R.txt")) == {
+        "ver": 2,
+        "rel": "large0.19700101000001.txt",
+    }
+    assert not os.path.exists("dst/large1.19700101000003.txt")
+
+    # Make it call copy
+    test.config["min_rename_size"] = "5 Pib"
+    test.write_config()
+
+    shutil.move("src/small1.txt", "src/small2.txt")
+    shutil.move("src/large1.txt", "src/large2.txt")
+
+    test.backup("-v", offset=5)
+
+    assert test.read("dst/small2.19700101000005.txt") == "0"
+    assert not os.path.exists("dst/small2.19700101000005R.txt")
+
+    assert test.read("dst/large2.19700101000005.txt") == "0123456789"
+    assert not os.path.exists("dst/large2.19700101000005R.txt")
+
+
 if __name__ == "__main__":
     test_main("reference")
     #     test_main("copy")
@@ -1159,6 +1200,7 @@ if __name__ == "__main__":
     #     test_metadata(False)
     #     test_dump()
     #     test_auto()
+    #     test_min_size()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

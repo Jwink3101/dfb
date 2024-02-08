@@ -150,7 +150,6 @@ You can, of course, do it all manually but (a) it won't check/delete references 
 <!--- Auto Generated -->
 <!--- DO NOT MODIFY. WILL NOT BE SAVED -->
 - [(ADVANCED) Reading Backup and Prune `--dump` files](docs/adv_backup_dump_format.md)
-- [Advanced (hidden) settings](docs/adv_settings.md)
 - [Changelog](docs/changelog.md)
 - [CLI Help](docs/CLI_help.md)
 - [Using dfb with cold storage](docs/cold_storage.md)

@@ -188,10 +188,6 @@ class Config:
         self._config["DELENV"] = RC.DELENV
         self._config["clean_config_id"] = clean_config_id
 
-        # Advanced options
-        self._config["disable_refresh"] = False
-        self._config["dbcache_dir"] = None
-
         self._config.update(self.add_params)
 
         self._hidden_keys = set(self._config)  # to be removed in repr
@@ -332,6 +328,12 @@ class Config:
             self._config.get("_uuid", self._config["config_id"])
         )
 
+        if mrs := self._config["min_rename_size"]:
+            from .utils import parse_bytes
+
+            self._config["min_rename_size"] = mrs1 = parse_bytes(mrs)
+            logger.debug(f"Parsed min_rename_size {_r(mrs)} as {_r(mrs1)} bytes")
+
     def _set_auto(self):
         sf = self.rc.features(self.src)
         df = self.rc.features(self.dst)
@@ -466,7 +468,7 @@ compare = "auto"  # "size", "mtime", "hash", "auto"
 dst_compare = None  # "size", "mtime", "hash", "auto", None
 
 # Rename tracking src-to-src. False disables it. "size" is risky!
-renames = "auto" # "size", "mtime", "hash", "auto", False
+renames = "auto"  # "size", "mtime", "hash", "auto", False
 
 # Rename tracking src-to-dst. None uses 'renames'
 dst_renames = None  # "size", "mtime", "hash", "auto", False, None
@@ -474,13 +476,17 @@ dst_renames = None  # "size", "mtime", "hash", "auto", False, None
 # Rename files with server-side-copy or with reference file
 rename_method = "reference"  # 'reference', 'copy'
 
+# If files are less than this size, do not track the rename. Can specify with
+# normal prefixes or an integer byte count (e.g. 2097152, "2 KiB", "10 MB", "15 MiB")
+min_rename_size = 0
+
 ##############################################
 ##             rclone Settings              ##
 ##         (optional, intermediate)         ##
 ##############################################
 
-# Flags and environment for general rclone usage. 
-# Examples include --config (or RCLONE_CONFIG). 
+# Flags and environment for general rclone usage.
+# Examples include --config (or RCLONE_CONFIG).
 # Example for config password
 #   > from getpass import getpass
 #   > rclone_env = {"RCLONE_CONFIG_PASS": getpass("Password: ")}
@@ -499,7 +505,7 @@ rclone_exe = "rclone"
 ##                (optional)                ##
 ##############################################
 
-# How to handle links on local src. 'link' makes .rcloneline files and 
+# How to handle links on local src. 'link' makes .rcloneline files and
 # 'copy' copies the referent. See https://github.com/rclone/rclone/issues/6855
 links = "link"  # {'skip','link','copy'}
 
@@ -517,10 +523,10 @@ get_modtime = "auto"  # True, False, "auto"
 error_on_missing_hash = False
 
 # String or list of strings of hash types. None uses all available on a remote
-hash_type = None 
+hash_type = None
 
 # Whether to always request hashes. "auto" maps to False for now
-get_hashes = False # True, False, "auto"
+get_hashes = False  # True, False, "auto"
 
 # Request and transfer (if possible) metadata. Metadata is also stored in the snapshot
 # files in case the dst doesn't support it. However, it must be restored manually if not
@@ -535,16 +541,28 @@ log_dest = None
 # processed and cleaned as needed
 config_id = f"{src}-{dst}"
 
+# Specify where to store the file database. Default (None) is
+# `<rclone cache dir>/DFB/<config_id>.db`.
+dbcache_dir = None
+
 ##############################################
-##       Pre- and Post-Shell Options        ##
-##                (optional)                ##
+##             Disable Features             ##
+##     Use --override to undo. Example:     ##
+##    --override "disable_prune = False"    ##
 ##############################################
 
 # Pruning is the only distructive process in dfb. In order to make sure it isn't done by
 # accident, setting this to True will force all pruneing to be as if called with
-# --dry-run. To undo this, you must override it:
-#   --override "disable_prune = False"
 disable_prune = False
+
+# While not destructive, refresh can be very slow on some remotes, especially with many
+# references and/or not using snapshots
+disable_refresh = False
+
+##############################################
+##       Pre- and Post-Shell Options        ##
+##                (optional)                ##
+##############################################
 
 ## Pre-, Post- and fail- shell commands to run
 # Specify shell code to be evaluated before and/or after running dfb. Note

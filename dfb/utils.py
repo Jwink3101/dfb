@@ -8,6 +8,7 @@ import random
 import subprocess
 import shlex
 import mimetypes
+import re
 import logging
 from collections import namedtuple
 
@@ -31,7 +32,6 @@ def time2all(dt_or_ts):
                 dt_or_ts = int(dt_or_ts)
             except:
                 pass
-
     obj = timestamp_parser(dt_or_ts, utc=True)
     dt = obj.astimezone(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
     ts = int(obj.timestamp())
@@ -147,6 +147,45 @@ def human_readable_bytes(
     if fmt:
         return "{0:g} {1:s}".format(*res)
     return res
+
+
+def parse_bytes(strsize):
+    if isinstance(strsize, (int, float)):
+        return int(strsize)
+
+    prefix2bytes = {"b": 1}
+
+    dec_prefix = ["", "kilo", "mega", "giga", "tera", "peta", "exa", "zetta", "yotta"]
+    bin_prefix = ["", "kibi", "mebi", "gibi", "tebi", "pebi", "exbi", "zebi", "yobi"]
+
+    for ii, (dp, bp) in enumerate(zip(dec_prefix, bin_prefix)):
+        prefix2bytes[dp] = 1000**ii
+        prefix2bytes[bp] = 1024**ii
+
+        if ii:
+            c = dp[0]
+            prefix2bytes[c] = prefix2bytes[f"{c}b"] = 1000**ii
+            prefix2bytes[f"{c}i"] = prefix2bytes[f"{c}ib"] = 1024**ii
+
+    strsize = (
+        strsize.lower()
+        .replace("bytes", "")
+        .replace("byte", "")
+        .replace(" ", "")
+        .strip()
+    )
+
+    match = re.match(r"([\d|\.]+)(\D*)", strsize)
+    if not match:
+        raise ValueErorr("Could not parse")
+    val, units = match.groups()
+    val = float(val)
+    try:
+        uval = prefix2bytes[units]
+    except KeyError:
+        raise ValueError(f"Unrecognized {units = }")
+
+    return int(val * uval)
 
 
 def shell_runner(cmds, dry=False, env=None, prefix=""):

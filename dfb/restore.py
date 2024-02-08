@@ -199,14 +199,3 @@ class Restore:
             msg = "ERROR: At least one restore did not work."
             logger.info(msg)
             raise ValueError(msg)
-
-
-class _do_nothing:
-    def __init__(self, *_):
-        pass
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *_):
-        pass

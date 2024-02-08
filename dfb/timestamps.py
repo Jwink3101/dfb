@@ -120,8 +120,8 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     timestamp0 = timestamp
     if isinstance(timestamp, str):
         timestamp = timestamp.lower()
-        if timestamp.startswith("i") or timestamp.startswith("u"):
-            timestamp = float(timestamp[1:])  # May have to deal with 2038 problem?
+        if match := re.match(r"^[i|u](-?[\d|\.]+)$", timestamp):
+            timestamp = float(match.group(1))  # May have to deal with 2038 problem?
         elif timestamp.lower().strip() == "now":
             timestamp = datetime.datetime.now().astimezone()
 
@@ -172,7 +172,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     if n == 8:
         timestamp = f"{timestamp} 00:00:00"
 
-    timestamp = timestamp.lower().replace(":", "").replace("t", "")
+    timestamp = timestamp.lower().replace(":", "").replace("t", "").replace("_", "")
 
     # pull timezone
     if timestamp.endswith("z"):
@@ -187,8 +187,15 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     else:
         tz = None
 
-    # Now get rid of anything that isn't numeric or dot
+    # Now get rid of anything that isn't numeric or dot. We need to also
+    # be weary of something that really just isn't a timestamp.
+    l0 = len(timestamp)
     timestamp = "".join(c for c in timestamp if c in string.digits + ".")
+    l1 = len(timestamp)
+
+    if l1 / l1 < 0.9:
+        logger.debug("Timestamp below tol for bad chars")
+        return
 
     timestamp = timestamp.split(".")
     if len(timestamp) == 1:  # No precision

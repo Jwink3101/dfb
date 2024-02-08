@@ -8,6 +8,7 @@ import time
 import io
 import json
 import logging
+import string
 from functools import partialmethod
 from textwrap import dedent, indent
 
@@ -366,11 +367,16 @@ class DFBDST:
         if not (snapfile := self._snapshot_dict.get(file["rpath"], None)):
             return file
 
-        # They should be the same by rpath but just do a quick sanity check
-        if file["size"] != snapfile["size"]:
+        # They should be the same by rpath but just do a quick sanity check.
+        # Include checking the timestamp for some odd files
+
+        if (
+            file["size"] != snapfile["size"]
+            or file["timestamp"] != snapfile["timestamp"]
+        ):
             logger.warning(
                 f"snapshot for rpath = {_r(file['rpath'])} does not match "
-                "size as it should. Ignoring"
+                "as expected. Ignoring"
             )
             return file
 
@@ -954,7 +960,7 @@ def rpath2apath(rpath):
 
     # Handle the special case of the tag at the end. This occurs
     # if a file doesn't have an extension or was created manually (incorrectly).
-    # Otherwise, the dateflag is on the stem
+    # Otherwise, the dateflag is on the stem.
     try:
         stem, ext = os.path.splitext(name)
         ts, flag = parse_dateflag(ext[1:])
@@ -967,21 +973,40 @@ def rpath2apath(rpath):
         ts, flag = parse_dateflag(ts[1:])
 
     apath = os.path.join(parent, stem + ext)
+
+    # Comment this out b/c older split names will give a false positive.
+    # if _verify and apath2rpath(apath,ts,flag=flag,_verify=False) != rpath:
+    #     logger.error(
+    #         f"Failed round-trip sanity check with {apath = }, {rpath = }. "
+    #         "Please submit a bug report"
+    #     )
     return apath, ts, flag
 
 
 def parse_dateflag(ts):
+    """
+    Parse the dateflag (tag) of the file. Note that while the timestamp tools
+    are fairly forgiving, this one is not! It expects full date and time
+    though will allow some modification around that
+    """
     if ts[-1] in "DR":  # Delete, Reference
         flag = ts[-1]
         ts = ts[:-1]
     else:
         flag = ""
     ts = ts.removeprefix(".")
+
+    allow0 = set(string.digits + "-T:.")
+    allow1 = set(string.digits + ".")
+    tsclean = "".join(c for c in ts if c in allow1)
+    if len(tsclean) < 14 or any(c not in allow0 for c in ts):  # YYYYmmDDHHMMSS
+        raise ValueError()
+
     ts, _, _, _ = time2all(ts)
     return ts, flag
 
 
-def apath2rpath(apath, ts=None, *, flag=""):
+def apath2rpath(apath, ts=None, *, flag="", verify=True):
     """
     Convert from apath,ts ('sub/dir/file.txt',12345)
     to rpath ('sub/dir/file.12345.txt')
@@ -990,7 +1015,23 @@ def apath2rpath(apath, ts=None, *, flag=""):
     referrer path
     """
     ts = ts or nowfun()[0]
-    _, dt, _, _ = time2all(ts)
+    ts, dt, _, _ = time2all(ts)
 
     base, ext = smart_splitext(apath)
-    return f"{base}.{dt}{flag}{ext}"
+    rpath = f"{base}.{dt}{flag}{ext}"
+
+    # Comment this out b/c older split names will give a false positive.
+    # if _verify and rpath2apath(rpath,_verify=False)[0] != apath:
+    #     logger.error(
+    #         f"Failed round-trip sanity check with {apath = }, {rpath = }. "
+    #         "Please submit a bug report"
+    #     )
+
+    # Sanity check:
+    if verify and rpath2apath(rpath) != (apath, ts, flag):
+        logger.warning(
+            f"Failed sanity check {apath = }, {rpath = }. Using fallback split"
+        )
+        base, ext = os.path.split(apath)
+        rpath = f"{base}.{dt}{flag}{ext}"
+    return rpath

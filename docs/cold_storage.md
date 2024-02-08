@@ -14,7 +14,7 @@ The basic premise is that you upload to "online" storage, do an export (either o
 
 ## (Optional) Disable Refresh
 
-A regular refresh will break this workflow since the online storage won't have everything. So we use the [advanced setting](adv_settings.md):
+A regular refresh will break this workflow since the online storage won't have everything. 
 ```python
 disable_refresh = True
 ```

@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20240208.0
+
+- Moved advanced config items into regular config
+- Added minimum size to reference vs upload again
+- Bug fixes and sanity checks on smart splitting.
+
 ## 20240204.1 .. 20240204.5
 
 - Snapshots are used to fill reference files. This is a MAJOR improvement if you have a lot of references since they all do not have to be read again
