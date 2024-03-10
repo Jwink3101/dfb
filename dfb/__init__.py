@@ -53,6 +53,3 @@ timestamps.nowfun = nowfun
 
 # For testing only. I can add fail points
 _FAIL = set()
-
-# Additional imports done afterwards. This prevents circular imports
-from .dstdb import rpath2apath, apath2rpath
