@@ -63,6 +63,8 @@ To refresh, you would do:
 
 Note that order *does matter* if you have any prune actions but otherwise doesn't. This is because the prune will delete the entry from the database which it can't do it added in the wrong order.
 
+Note that `dbimport` does *not* upload the files to the remote. You can put them there manually but it won't matter for future imports.
+
 ## Prune
 
 Pruning follows a similar path to backup. First run prune with `--dump`. This will return line-delimited json like

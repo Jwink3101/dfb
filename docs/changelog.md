@@ -2,6 +2,13 @@
 
 (newest on top)
 
+## 20240309.0
+
+Minor!
+
+- Added `DFB_OVERRIDE_TIMESTAMP` and `DFB_OVERRIDE_UNIXTIME` environment to override the current time. These should be used carefully!
+- Documentation
+
 ## 20240208.0
 
 - Moved advanced config items into regular config

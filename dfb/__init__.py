@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 
 from .configuration import LOCK
 from .utils import time2all
@@ -7,7 +8,7 @@ from .timestamps import timestamp_parser
 
 logger = logging.getLogger(__name__)
 
-__version__ = "20240208.0"
+__version__ = "20240309.0"
 MIN_RCLONE = 1, 63, 0
 
 
@@ -15,8 +16,8 @@ MIN_RCLONE = 1, 63, 0
 # will get set. Otherwise, it is None
 __git_version__ = None
 
-_override_ts = None
-_override_unix = None
+_override_ts = os.environ.get("DFB_OVERRIDE_TIMESTAMP", None)
+_override_unix = os.environ.get("DFB_OVERRIDE_UNIXTIME", None)
 _override_offset = 0
 
 
@@ -52,3 +53,6 @@ timestamps.nowfun = nowfun
 
 # For testing only. I can add fail points
 _FAIL = set()
+
+# Additional imports done afterwards. This prevents circular imports
+from .dstdb import rpath2apath, apath2rpath

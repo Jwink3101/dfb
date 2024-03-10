@@ -89,7 +89,7 @@ class DFBDST:
                     ORDER BY key""",
                     ("created", "version"),
                 ).fetchall()
-                if len(r) == 2:
+                if len(r) == 2:  # Note it is ORDER BY so the order wont change
                     created, version = [i["val"] for i in r]
                     logger.debug(f"dstdb exists. {created = } {version = }")
                     return
@@ -713,7 +713,7 @@ class DFBDST:
                             THEN LENGTH(path)
                             ELSE INSTR(path, '/')
                         END
-                    ) as sub
+                    ) AS sub
                 FROM subpaths"""
             )
             qvals.append(f"{subdir}/%")
@@ -729,7 +729,7 @@ class DFBDST:
                             THEN LENGTH(apath)
                             ELSE INSTR(apath, '/')
                         END
-                    ) as sub
+                    ) AS sub
                 FROM items"""
             )
 

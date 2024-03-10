@@ -577,7 +577,8 @@ def parse(argv=None, shebanged=False):
         help="Import an exported list",
         description="""
             [ADVANCED] Import file(s) and append to database. 
-            Will overwrite any existing data if applicable.
+            Will overwrite any existing data if applicable. Note: Does *not* upload
+            the import file lists to the remote as in a backup.
             """,
     )
 

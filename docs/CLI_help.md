@@ -8,7 +8,7 @@ usage: dfb [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--version] command ...
 
 dfb -- Date File Backup
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --version             show program's version number and exit
 
@@ -53,7 +53,7 @@ usage: dfb init [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--force-overwrite] config-
 positional arguments:
   config-file           Specify a config file destination
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --force-overwrite     Force dfb init to overwrite an existing config file
 
@@ -75,7 +75,7 @@ usage: dfb backup [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                   [-o 'OPTION = VALUE'] [-n] [-i] [--dump FILE or -] [--subdir SUBDIR]
                   [--refresh] [--refresh-use-snapshots | --no-refresh-use-snapshots]
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --subdir SUBDIR       Backup only a subset of the source. Move tracking
                         (referencing) will not work *outside* the subdir. It will look
@@ -97,7 +97,7 @@ optional arguments:
                         Whether or not to also download snapshots from the destination
                         and update metadata. Note that the snapshots are _secondary_.
                         They are not needed but enable src-to-src comparisons
-                        immediately after refresh (default: True)
+                        immediately after refresh
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -144,13 +144,13 @@ Execution Settings:
 usage: dfb refresh [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                    [-o 'OPTION = VALUE'] [--use-snapshots | --no-use-snapshots]
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --use-snapshots, --no-use-snapshots
                         Whether or not to also download snapshots from the destination
                         and update metadata. Note that the snapshots are _secondary_.
                         They are not needed but enable src-to-src comparisons
-                        immediately after refresh (default: True)
+                        immediately after refresh
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -196,7 +196,7 @@ positional arguments:
                         myremote:restore/path) or relative to the configured source by
                         specifying it as "@src" (e.g. @src/restore/path)
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --no-check            Disable rclone comparing the source and the dest. If set, will
                         restore everything
@@ -279,7 +279,7 @@ positional arguments:
                         configured source by specifying it as "@src" (e.g.
                         @src/restore/path), or specify as '-' to print to stdout.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --no-check            Disable rclone comparing the source and the dest. If set, will
                         restore everything
@@ -358,7 +358,7 @@ usage: dfb ls [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
 positional arguments:
   path                  Starting path. Defaults to the top
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -d, --deleted, --del  List deleted files too with '<filename> (DEL)'. Specify twice
                         to ONLY include deleted files
@@ -413,7 +413,7 @@ Config & Cache Settings:
 
 Listing Settings:
   --header, --no-header
-                        Print a header where applicable (default: True)
+                        Print a header where applicable
   --head N              Include the first N lines plus --tail (if set).
   --tail N              Include --head (if set) plus the last N lines.
   --human               Use human readable sizes
@@ -434,7 +434,7 @@ usage: dfb snapshot [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
 positional arguments:
   path                  Starting path. Defaults to the top
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -d, --deleted, --del  List deleted files as well. Specify twice to ONLY include
                         deleted files
@@ -503,7 +503,7 @@ usage: dfb versions [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
 positional arguments:
   filepath              Path to the file of interest
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --ref-count           Include the reference count
   --real-path, --rpath  Include *full* real path of the file. Specify twice to include
@@ -535,7 +535,7 @@ Config & Cache Settings:
 
 Listing Settings:
   --header, --no-header
-                        Print a header where applicable (default: True)
+                        Print a header where applicable
   --head N              Include the first N lines plus --tail (if set).
   --tail N              Include --head (if set) plus the last N lines.
   --human               Use human readable sizes
@@ -572,7 +572,7 @@ positional arguments:
                         32 seconds". (The order doesn't matter). Can also specify
                         "now" for the current time.
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -N N, --keep-versions N
                         Specify number of versions to keep past the specified time.
@@ -636,7 +636,7 @@ technically could be deleted but it is more efficient not to try to identify the
 ```text
 usage: dfb advanced [-h] command ...
 
-optional arguments:
+options:
   -h, --help  show this help message and exit
 
 Commands:
@@ -658,13 +658,14 @@ usage: dfb advanced dbimport [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                              [files ...]
 
 [ADVANCED] Import file(s) and append to database. Will overwrite any existing data if
-applicable.
+applicable. Note: Does *not* upload the import file lists to the remote as in a
+backup.
 
 positional arguments:
   files                 File(s) to import. Can be any rclone path including local.
                         Will automatically decompress .gz or .xz files
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --reset               Reset the DB before import. Call without files to *just* reset
 
@@ -711,12 +712,12 @@ positional arguments:
                         where the file is actually stored such as what you see with
                         `versions --real-path`
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   --error-if-referenced, --no-error-if-referenced
                         If true (default), will error if there are references to the
                         provided path(s). If false, will *also* delete those
-                        references. (default: True)
+                        references.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
