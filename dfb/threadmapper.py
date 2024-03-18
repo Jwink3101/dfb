@@ -3,7 +3,6 @@ import os
 from threading import Thread
 from queue import Queue
 
-_r = repr
 
 logger = logging.getLogger(__name__)
 

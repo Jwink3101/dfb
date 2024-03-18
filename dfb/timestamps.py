@@ -5,8 +5,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_r = repr
-
 
 # This will get monkey-patched later when used in dfb but it is done like this so that
 # this module code can be copied to other projects w/o this being affected
@@ -167,7 +165,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
     if n <= 6:  # This won't catch them all but still will catch some.
         raise ValueError(
             "MUST at least a FOUR digit year, two digit month, and two digit day. "
-            f"Specified: {_r(timestamp0)}"
+            f"Specified: {timestamp0!r}"
         )
     if n == 8:
         timestamp = f"{timestamp} 00:00:00"

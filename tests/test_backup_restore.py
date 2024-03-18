@@ -25,8 +25,6 @@ import testutils
 # testing
 import pytest
 
-_r = repr
-
 
 @pytest.mark.parametrize("rename_method", ["reference", "copy"])
 def test_main(rename_method):
@@ -279,7 +277,7 @@ def test_main(rename_method):
 
     test.config["rclone_env"]["RCLONE_CONFIG_PASS"] = "secret"
     test.write_config()
-    r = _r(test.config_obj)
+    r = repr(test.config_obj)
     assert "secret" not in r
     assert "**REDACTED**" in r
 
@@ -962,6 +960,29 @@ def test_snapshots():
         exp = {frozenset((k, f[k]) for k in keys) for f in exp}
     assert exp == cumupl
 
+    # w/ reset then each its own all. Should be the same
+    test.call("advanced", "dbimport", "--reset")  # reset
+    test.call("advanced", "dbimport", "oe1.jsonl")
+    test.call("advanced", "dbimport", "oe3.jsonl")
+    test.call("advanced", "dbimport", "oe5.jsonl")
+    test.call("snapshot", "--output", "new.jsonl", "--export")
+    with open("new.jsonl") as fp:
+        exp = [json.loads(line) for line in fp]
+        exp = {frozenset((k, f[k]) for k in keys) for f in exp}
+    assert exp == cumupl
+
+    # w/ reset but in a directory
+    Path("tmpdir").mkdir()
+    shutil.copy2("oe1.jsonl", "tmpdir")
+    shutil.copy2("oe3.jsonl", "tmpdir")
+    shutil.copy2("oe5.jsonl", "tmpdir")
+    test.call("advanced", "dbimport", "--reset", "--dirs", "tmpdir")
+    test.call("snapshot", "--output", "new.jsonl", "--export")
+    with open("new.jsonl") as fp:
+        exp = [json.loads(line) for line in fp]
+        exp = {frozenset((k, f[k]) for k in keys) for f in exp}
+    assert exp == cumupl
+
     # w/o reset
     test.call("advanced", "dbimport", "oe1.jsonl", "oe3.jsonl", "oe5.jsonl")
     test.call("snapshot", "--output", "new.jsonl", "--export")
@@ -969,6 +990,39 @@ def test_snapshots():
         exp = [json.loads(line) for line in fp]
         exp = {frozenset((k, f[k]) for k in keys) for f in exp}
     assert exp == cumupl
+
+    ## Now prune things
+    test.call("prune", "u7", offset=7)
+    shutil.copy2(
+        "dst/.dfb/snapshots/1970/01/19700101000007Z.jsonl.gz", "prune.jsonl.gz"
+    )
+
+    with gz.open("prune.jsonl.gz", "rt") as fp:
+        for line in fp:
+            line = json.loads(line)
+            assert line["_V"] == 1
+            assert line["_action"] == "prune"
+
+    # reset, import again then apply.
+    test.call(
+        "advanced",
+        "dbimport",
+        "--reset",
+        "oe1.jsonl",
+        "oe3.jsonl",
+        "oe5.jsonl",
+        "prune.jsonl.gz",
+    )
+    log = test.logs[-1][0]
+    assert "Imported 0 files and will prune 4" in log
+    assert "Imported 3 files and will prune 4" not in log, "should not have mixed"
+    assert "Pruned 4 files from all exports" in log
+
+    test.call("snapshot", "--output", "new.jsonl", "--export")
+    with open("new.jsonl") as fp:
+        exp = [json.loads(line) for line in fp]
+        exp = {frozenset((k, f[k]) for k in keys) for f in exp}
+    assert exp != cumupl, "Should NOT match with the exports because it was pruned!"
 
 
 def test_missing_hashes():

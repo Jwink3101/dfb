@@ -6,7 +6,6 @@ from functools import partial
 
 from . import __version__, __git_version__
 
-_r = repr
 logger = logging.getLogger(__name__)
 
 _TESTMODE = False
@@ -60,10 +59,10 @@ def parse(argv=None, shebanged=False):
         (Required) Specify config file. Can also be specified via the 
         $DFB_CONFIG_FILE environment variable or is implied if executing the config
         file itself. $DFB_CONFIG_FILE is currently 
-        {('set to ' + _r(DFB_CONFIG)) if DFB_CONFIG else 'not set'}. 
+        {('set to ' + repr(DFB_CONFIG)) if DFB_CONFIG else 'not set'}. 
         """
     if shebanged:
-        config_help += f" Currently implied as {_r(shebanged)}."
+        config_help += f" Currently implied as {shebanged!r}."
     config_global_group.add_argument(
         "--config",
         metavar="file",
@@ -84,8 +83,9 @@ def parse(argv=None, shebanged=False):
             "Override text is evaluated before *and* after the config file however, "
             "the variables 'pre' and 'post' are defined as True or False if it is "
             "before or after the config file. These can be used with conditionals to "
-            "control overrides. See readme for details."
-            "Can specify multiple times. There is no input validation of any sort."
+            "control overrides. See readme for details. "
+            "Can specify multiple times. There is no input validation so do not specify "
+            "untrusted inputs."
         ),
     )
     global_parent = argparse.ArgumentParser(add_help=False)
@@ -276,6 +276,7 @@ def parse(argv=None, shebanged=False):
             Whether or not to also download snapshots from the destination and
             update metadata. Note that the snapshots are _secondary_. They are
             not needed but enable src-to-src comparisons immediately after refresh
+            and are faster for resolving references. Default: %(default)s.
             """,
     )
 
@@ -300,6 +301,7 @@ def parse(argv=None, shebanged=False):
             Whether or not to also download snapshots from the destination and
             update metadata. Note that the snapshots are _secondary_. They are
             not needed but enable src-to-src comparisons immediately after refresh
+            and are faster for resolving references. Default: %(default)s.
             """,
     )
 
@@ -380,7 +382,7 @@ def parse(argv=None, shebanged=False):
         "--header",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Print a header where applicable",
+        help="Print a header where applicable. Default: %(default)s",
     )
     list_group.add_argument(
         "--head",
@@ -443,7 +445,10 @@ def parse(argv=None, shebanged=False):
     snap = subparsers["lsnaps"] = subpar.add_parser(
         "snapshot",
         parents=[global_parent, list_parent, config_global],
-        help="Recursivly list the files in line-delimited JSON at the optionally specified time",
+        help="""
+            Recursively list the files in line-delimited JSON at the 
+            optionally specified time
+            """,
     )
 
     de_group = snap.add_mutually_exclusive_group()
@@ -462,7 +467,7 @@ def parse(argv=None, shebanged=False):
         "-e",
         "--export",
         action="store_true",
-        help="Export mode. Includes _all_ entries, not just the final one. Ignored",
+        help="Export mode. Includes _all_ entries, not just the final one",
     )
     snap.add_argument(
         "--output",
@@ -588,6 +593,28 @@ def parse(argv=None, shebanged=False):
         help="""File(s) to import. Can be any rclone path including local. 
                 Will automatically decompress .gz or .xz files""",
     )
+    # This lets the user specify positional or flag arguments
+    dbimport.add_argument(
+        "--files",
+        nargs="*",
+        metavar="file",
+        action="append",
+        default=[],
+        dest="files2",  # will be merged in later
+        help="""File(s) to import. Can be any rclone path including local. 
+                Will automatically decompress .gz or .xz files""",
+    )
+
+    dbimport.add_argument(
+        "--dirs",
+        nargs="*",
+        metavar="dir",
+        action="append",
+        default=[],
+        help="""Directories of files import. Can be any rclone path including local. 
+                Will automatically decompress .gz or .xz files. Will always import
+                files then directories""",
+    )
 
     dbimport.add_argument(
         "--reset",
@@ -622,7 +649,7 @@ def parse(argv=None, shebanged=False):
         default=True,
         help="""
             If true (default), will error if there are references to the provided
-            path(s). If false, will *also* delete those references.
+            path(s). If false, will *also* delete those references.  Default: %(default)s.
         """,
     )
     #################################################
@@ -673,6 +700,7 @@ def clishebang(argv=None):
         except ThrowingArgumentParserError as E:
             print(*E.args, file=sys.stderr)
             sys.exit(2)
+
     r = _cli(cliconfig)
     if _TESTMODE:
         return r
@@ -732,7 +760,7 @@ def _cli(cliconfig):
 
         if cliconfig.command == "init":
             config._write_template(force=cliconfig.force_overwrite)
-            print(f"New config in {_r(cliconfig.config)}")
+            print(f"New config in {cliconfig.config!r}")
 
             return
 
@@ -767,8 +795,13 @@ def _cli(cliconfig):
         elif cliconfig.command == "dbimport":
             from .dstdb import DFBDST
 
+            # Update CLI args
+            cliconfig.files.extend(g for group in cliconfig.files2 for g in group)
+            cliconfig.dirs = [g for group in cliconfig.dirs for g in group]
+
             DFBDST(config).dbimport(
                 cliconfig.files,
+                cliconfig.dirs,
                 reset=cliconfig.reset,
             )
             return config
@@ -807,7 +840,7 @@ def _cli(cliconfig):
                 prune.byrpaths()
             return prune
         else:
-            logger.error(f"Unrecognized command {_r(cliconfig.command)}")
+            logger.error(f"Unrecognized command {cliconfig.command!r}")
             return config
 
     except Exception as E:

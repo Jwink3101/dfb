@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20240317.0
+
+- Added option to specify a directory (including an rclone remote) of files to import for `advanced dbimport`.
+- Improved stats on transfer and fixed bug where would start at 0 after some time.
+- Minor fixes and improvements.
+
 ## 20240309.0
 
 Minor!

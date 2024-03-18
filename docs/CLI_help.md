@@ -34,7 +34,7 @@ Commands:
     restore-file        Restore a file to a specified location, file, or to stdout
     ls                  Cleanly list files and directories at the optionally specified
                         time
-    snapshot            Recursivly list the files in line-delimited JSON at the
+    snapshot            Recursively list the files in line-delimited JSON at the
                         optionally specified time
     versions            Show all versions of a file.
     timestamps          List all timestamps in the backup. Note that this will include
@@ -97,7 +97,8 @@ options:
                         Whether or not to also download snapshots from the destination
                         and update metadata. Note that the snapshots are _secondary_.
                         They are not needed but enable src-to-src comparisons
-                        immediately after refresh
+                        immediately after refresh and are faster for resolving
+                        references. Default: True.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -120,8 +121,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 Execution Settings:
   Precedance follows the order specified in this help
@@ -150,7 +152,8 @@ options:
                         Whether or not to also download snapshots from the destination
                         and update metadata. Note that the snapshots are _secondary_.
                         They are not needed but enable src-to-src comparisons
-                        immediately after refresh
+                        immediately after refresh and are faster for resolving
+                        references. Default: True.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -173,8 +176,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 ```
 
@@ -223,8 +227,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 Time Specification:
   All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-
@@ -307,8 +312,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 Time Specification:
   All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-
@@ -408,12 +414,13 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 Listing Settings:
   --header, --no-header
-                        Print a header where applicable
+                        Print a header where applicable. Default: True
   --head N              Include the first N lines plus --tail (if set).
   --tail N              Include --head (if set) plus the last N lines.
   --human               Use human readable sizes
@@ -438,8 +445,7 @@ options:
   -h, --help            show this help message and exit
   -d, --deleted, --del  List deleted files as well. Specify twice to ONLY include
                         deleted files
-  -e, --export          Export mode. Includes _all_ entries, not just the final one.
-                        Ignored
+  -e, --export          Export mode. Includes _all_ entries, not just the final one
   --output OUTPUT       Specify an output file. Otherwise will print to stdout. If the
                         file ends in .gz or .xz, will use the respective compression.
 
@@ -485,8 +491,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 ```
 
@@ -530,12 +537,13 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 Listing Settings:
   --header, --no-header
-                        Print a header where applicable
+                        Print a header where applicable. Default: True
   --head N              Include the first N lines plus --tail (if set).
   --tail N              Include --head (if set) plus the last N lines.
   --human               Use human readable sizes
@@ -607,8 +615,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 Execution Settings:
   Precedance follows the order specified in this help
@@ -654,7 +663,8 @@ Commands:
 
 ```text
 usage: dfb advanced dbimport [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
-                             [-o 'OPTION = VALUE'] [--reset]
+                             [-o 'OPTION = VALUE'] [--files [file ...]]
+                             [--dirs [dir ...]] [--reset]
                              [files ...]
 
 [ADVANCED] Import file(s) and append to database. Will overwrite any existing data if
@@ -667,6 +677,11 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
+  --files [file ...]    File(s) to import. Can be any rclone path including local.
+                        Will automatically decompress .gz or .xz files
+  --dirs [dir ...]      Directories of files import. Can be any rclone path including
+                        local. Will automatically decompress .gz or .xz files. Will
+                        always import files then directories
   --reset               Reset the DB before import. Call without files to *just* reset
 
 Global Settings:
@@ -690,8 +705,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 ```
 
@@ -717,7 +733,7 @@ options:
   --error-if-referenced, --no-error-if-referenced
                         If true (default), will error if there are references to the
                         provided path(s). If false, will *also* delete those
-                        references.
+                        references. Default: True.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -740,8 +756,9 @@ Config & Cache Settings:
                         config file however, the variables 'pre' and 'post' are
                         defined as True or False if it is before or after the config
                         file. These can be used with conditionals to control
-                        overrides. See readme for details.Can specify multiple times.
-                        There is no input validation of any sort.
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
 
 Execution Settings:
   Precedance follows the order specified in this help

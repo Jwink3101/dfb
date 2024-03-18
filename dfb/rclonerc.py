@@ -25,7 +25,6 @@ from .cli import ThrowingArgumentParserError, ThrowingArgumentParser
 import requests
 from requests.auth import HTTPBasicAuth
 
-_r = repr
 logger = logging.getLogger(__name__)
 serve_logger = logging.getLogger(f"{__name__}-rc-server")
 
@@ -616,7 +615,9 @@ class RC:
         # logger.debug(f"call {res = }")
 
         if res.get("error", ""):
-            raise RcloneError(f"Error. Result: {res}")
+            err = RcloneError(f"Error. Result: {res}")
+            err.response = res
+            raise err
         return res
 
     def call_async_and_background(self, endpoint, postkw=None, params=None):

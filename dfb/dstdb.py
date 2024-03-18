@@ -18,7 +18,6 @@ from .timestamps import timestamp_parser
 from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
 from .threadmapper import thread_map_unordered as tmap
 
-_r = repr
 
 logger = logging.getLogger(__name__)
 
@@ -247,10 +246,10 @@ class DFBDST:
 
             ver = referent["ver"]
             if ver == 1:
-                logger.debug(f"Reference {_r(refferer)} is v1 (implied)")
+                logger.debug(f"Reference {refferer!r} is v1 (implied)")
                 return file, referent["path"]
             elif ver == 2:
-                logger.debug(f"Reference {_r(refferer)} is v2")
+                logger.debug(f"Reference {refferer!r} is v2")
                 path = os.path.join(os.path.dirname(refferer), referent["rel"])
                 path = os.path.normpath(path)
                 return file, path
@@ -270,7 +269,7 @@ class DFBDST:
             ).fetchone()
 
             if not row:
-                txt = f"WARNING: File {_r(refferer)} references {_r(referent)} "
+                txt = f"WARNING: File {refferer!r} references {referent!r} "
                 txt += "but it is missing. Will just be treated as deleted"
                 logger.warning(txt)
                 row = DFBDST.fullrow2dict(file)
@@ -294,7 +293,7 @@ class DFBDST:
                 f"REPLACE INTO items VALUES ({','.join('?' for _ in DFBDST.COLS)})",
                 DFBDST.dict2fullrow(file),
             )
-            logger.info(f"updated reference {_r(file['ref_rpath'])}")
+            logger.info(f"updated reference {file['ref_rpath']!r}")
             # Fetching references is slow so commit more often to make sure we don't
             # lose much. Plus, we are waiting for updates
             if ii % 10 == 0:
@@ -348,8 +347,8 @@ class DFBDST:
         if file.get("isref", False) == 2:
             if snapfile := self._snapshot_dict_ref.get(file["rpath"]):
                 logger.info(
-                    f"Updated reference for {_r(file['rpath'])} "
-                    f"from {_r(snapfile['rpath'])}"
+                    f"Updated reference for {file['rpath']!r} "
+                    f"from {snapfile['rpath']!r}"
                 )
                 keep = {
                     "apath": file["apath"],
@@ -375,7 +374,7 @@ class DFBDST:
             or file["timestamp"] != snapfile["timestamp"]
         ):
             logger.warning(
-                f"snapshot for rpath = {_r(file['rpath'])} does not match "
+                f"snapshot for rpath = {file['rpath']!r} does not match "
                 "as expected. Ignoring"
             )
             return file
@@ -385,7 +384,7 @@ class DFBDST:
         file["dstinfo"] = False
         return file
 
-    def dbimport(self, exportfiles, reset=False):
+    def dbimport(self, exportfiles, exportdirs, reset=False):
         if self.config.disable_refresh:
             logger.error("DB Import not allowed due to 'disable_refresh = True")
             logger.error("Run with `--override 'disable_refresh = False'` to override")
@@ -397,29 +396,50 @@ class DFBDST:
 
         rc = self.config.rc.start()
 
-        # Parallelize downloading all export files. They could have all kids of different
-        # paths including being full rclone paths so store by name with random component.
-        # Note this goes to a tmpdir, not cache dir like refresh does since these could
-        # change
-        (self.config.tmpdir / "imp").mkdir(exist_ok=False, parents=True)
-        exportfiles_dl = {e: f"{randstr(8)}.{os.path.basename(e)}" for e in exportfiles}
+        # Parallelize downloading all export files. Download the specified ones and sync
+        # the directories. Will then walk the file system and load them all. Note that
+        # order doesn't matter for entries except prunes. So will load all entries in
+        # whatever final order and then do prunes. Use random names so that there isn't
+        # a conflict with the same filename
 
-        def _dl_export(exportfile):
+        imp = self.config.tmpdir / "import" / randstr(8)
+        imp.mkdir(exist_ok=False, parents=True)
+
+        def _dl_exportfile(exportfile):
+            logger.debug(f"Downloading file {exportfile!r}")
             rc.copyfile(
                 src=exportfile,
-                dst=(str(self.config.tmpdir / "imp"), exportfiles_dl[exportfile]),
+                dst=(str(imp), f"{randstr(6)}/{os.path.basename(exportfile)}"),
                 _config={"NoCheckDest": True},
             )
 
-        for _ in tmap(_dl_export, exportfiles_dl, Nt=self.config.concurrency):
+        for _ in tmap(_dl_exportfile, exportfiles, Nt=self.config.concurrency):
             pass
 
-        for exportfile in exportfiles:
-            logger.info(f"Importing from {_r(exportfile)}")
+        # Do these serially since parallel will be done later
+        for exportdir in exportdirs:
+            logger.debug(f"Downloading directory {exportdir!r}")
+            params = {}
+            params["_config"] = {
+                "IgnoreTimes": True,  # Always download
+                "UseListR": True,  # Not too many files and could be much better
+                "Transfers": self.config.concurrency,
+            }
+
+            params["srcFs"] = exportdir
+            params["dstFs"] = rcpathjoin(str(imp), randstr(6))
+            rc.call("sync/sync", params=params)
+
+        # The "sorted" is not really needed but it is likely to keep the
+        # database cleaner
+        loadfiles = sorted(imp.rglob("*.jsonl*"), key=lambda file: file.name)
+
+        prune = []  # prune is OUTSIDE the file loop as noted above
+        for exportfile in loadfiles:
+            logger.debug(f"Importing from {str(exportfile)!r}")
             files = []
-            prune = []
-            local_export = self.config.tmpdir / "imp" / exportfiles_dl[exportfile]
-            with smart_open(str(local_export), "rt") as fp:
+            pcount = 0
+            with smart_open(exportfile, "rt") as fp:
                 for line in fp:
                     file = json.loads(line)
                     if file.get("_action", None) == "comment":
@@ -427,6 +447,7 @@ class DFBDST:
 
                     if file.get("_action", None) == "prune":
                         prune.append(file)
+                        pcount += 1
                         continue
 
                     files.append(file)
@@ -438,18 +459,19 @@ class DFBDST:
                     [DFBDST.dict2fullrow(file) for file in files],
                 )
             msg = f"  Imported {len(files)} files"
-
-            if prune:
-                with self.db() as db:
-                    db.executemany(
-                        """
-                        DELETE FROM items 
-                        WHERE rpath = ?""",
-                        ((file["rpath"],) for file in prune),
-                    )
-                msg += f" and pruned {len(prune)}"
-
+            if pcount:
+                msg += f" and will prune {pcount}"
             logger.info(msg)
+
+        if prune:
+            with self.db() as db:
+                db.executemany(
+                    """
+                    DELETE FROM items 
+                    WHERE rpath = ?""",
+                    ((file["rpath"],) for file in prune),
+                )
+            logger.info(f"Pruned {len(prune)} files from all exports")
 
     def insert_or_replace_many(self, files, *, insert, replace):
         """

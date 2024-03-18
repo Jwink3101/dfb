@@ -12,7 +12,6 @@ from threading import Lock
 
 logger = logging.getLogger(__name__)
 
-_r = repr
 
 LOCK = Lock()
 _TEMPDIR = False  # Just used in testing
@@ -107,7 +106,7 @@ def clean_config_id(config_id):
         config_id = f"{config_id[:20]}.{md5[:8]}.{config_id[-20:]}"
 
     if config_id0 != config_id:
-        logger.debug(f"config_id changed from {_r(config_id0)} to {_r(config_id)}")
+        logger.debug(f"config_id changed from {config_id0!r} to {config_id!r}")
 
     return config_id
 
@@ -124,7 +123,7 @@ class Config:
         try:
             self.configpath = Path(configpath).resolve()  # make it absolute
         except FileNotFoundError:
-            raise FileNotFoundError(f"Couldn't find {_r(configpath)}")
+            raise FileNotFoundError(f"Couldn't find {configpath!r}")
         self.add_params = add_params or {}
 
         self.now = nowfun()
@@ -224,7 +223,7 @@ class Config:
         self._validate()
 
         logger.info(f"ID: {self.config_id}")
-        logger.debug(f"Read config {_r(str(self.configpath))}")
+        logger.debug(f"Read config {str(self.configpath)!r}")
         for k in self._config_keys:
             if k not in self._config:
                 continue
@@ -234,7 +233,7 @@ class Config:
                     n: (k if n != "RCLONE_CONFIG_PASS" else "**REDACTED**")
                     for n, k in dispval.items()
                 }
-            logger.debug(f"   {k} = {_r(dispval)}")
+            logger.debug(f"   {k} = {dispval!r}")
 
         # Set these up because all methods will use them
         settings = dict(
@@ -332,7 +331,7 @@ class Config:
             from .utils import parse_bytes
 
             self._config["min_rename_size"] = mrs1 = parse_bytes(mrs)
-            logger.debug(f"Parsed min_rename_size {_r(mrs)} as {_r(mrs1)} bytes")
+            logger.debug(f"Parsed min_rename_size {mrs!r} as {mrs1!r} bytes")
 
     def _set_auto(self):
         sf = self.rc.features(self.src)
@@ -343,7 +342,7 @@ class Config:
 
         if self.compare == "auto":  # src to src
             self.compare = "mtime" if src_mtime else "size"
-            logger.debug(f"auto-setting 'compare' to {_r(self.compare)}")
+            logger.debug(f"auto-setting 'compare' to {self.compare!r}")
 
         if self.dst_compare == "auto":  # src to dst
             # don't *just* do self.compare since it could be hash
@@ -352,11 +351,11 @@ class Config:
             else:
                 self.dst_compare = "size"
 
-            logger.debug(f"auto-setting 'dst_compare' to {_r(self.dst_compare)}")
+            logger.debug(f"auto-setting 'dst_compare' to {self.dst_compare!r}")
 
         if self.renames == "auto":  # src to src
             self.renames = "mtime" if src_mtime else False
-            logger.debug(f"auto-setting 'renames' to {_r(self.renames)}")
+            logger.debug(f"auto-setting 'renames' to {self.renames!r}")
 
         if self.dst_renames == "auto":  # src to dst
             # don't *just* do self.renames since it could be hash or False
@@ -365,11 +364,11 @@ class Config:
             else:
                 self.dst_renames = False
 
-            logger.debug(f"auto-setting 'dst_renames' to {_r(self.dst_renames)}")
+            logger.debug(f"auto-setting 'dst_renames' to {self.dst_renames!r}")
 
         if self.get_modtime == "auto":
             self.get_modtime = src_mtime
-            logger.debug(f"auto-setting 'get_modtime' to {_r(self.get_modtime)}")
+            logger.debug(f"auto-setting 'get_modtime' to {self.get_modtime!r}")
 
         if self.get_hashes == "auto":
             # self.get_hashes = sf["Hashes"] and not sf["Features"]["SlowHash"]
@@ -379,7 +378,7 @@ class Config:
             #        "additional API calls. Setting get_hashes to False to be safe"
             #    )
             #    self.get_hashes = False
-            # logger.debug(f"auto-setting 'get_hashes' to {_r(self.get_hashes)}")
+            # logger.debug(f"auto-setting 'get_hashes' to {self.get_hashes!r}")
 
             # to be safe, making this always false. Users should set this if they want it
             self.get_hashes = False
@@ -405,7 +404,7 @@ class Config:
             cfg["rclone_env"]["RCLONE_CONFIG_PASS"] = "**REDACTED**"
 
         contents = ", ".join(
-            f"{k}={_r(cfg[k])}" for k in self._config_keys if k in self._config
+            f"{k}={cfg[k]!r}" for k in self._config_keys if k in self._config
         )
         return f"Config({contents})"
 

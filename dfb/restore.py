@@ -12,7 +12,6 @@ from .rclonerc import rcpathjoin, rcpathsplit
 from .utils import human_readable_bytes, star, listify, shell_header
 from .threadmapper import thread_map_unordered as tmap
 
-_r = repr
 logger = logging.getLogger(__name__)
 
 
@@ -76,7 +75,7 @@ class Restore:
         self.transfers = list(transfers)
         if not transfers:
             raise SourceNotFoundError(
-                f"Could not find any files at {_r(args.source)} at the specified time"
+                f"Could not find any files at {args.source!r} at the specified time"
             )
 
     def restore_file(self):
@@ -91,7 +90,7 @@ class Restore:
 
         if not row:
             raise SourceNotFoundError(
-                f"Could not find {_r(args.source)} at the specified time"
+                f"Could not find {args.source!r} at the specified time"
             )
 
         if args.dest == "-":
@@ -118,7 +117,7 @@ class Restore:
             d = rcpathjoin(*listify(dst))
             if d == "-":
                 d = "<<stdout>>"
-            _p(f"    {_r(s)} --> {_r(d)} ({num:0.2f} {units})")
+            _p(f"    {s!r} --> {d!r} ({num:0.2f} {units})")
 
     def transfer_shell(self):
         config = self.config
@@ -140,7 +139,7 @@ class Restore:
         else:
             with open(self.args.shell_script, "wt") as fp:
                 fp.write("\n".join(out))
-            logger.info(f"Shell script written to {_r(self.args.shell_script)}")
+            logger.info(f"Shell script written to {self.args.shell_script!r}")
 
     def transfer(self):
         config = self.config
@@ -173,7 +172,7 @@ class Restore:
                     return
                 stxt = rcpathjoin(*listify(src))
                 dtxt = rcpathjoin(*listify(dst))
-                logger.info(f"Transfering {_r(stxt)} to {_r(dtxt)}.")
+                logger.info(f"Transfering {stxt!r} to {dtxt!r}.")
                 rc.copyfile(
                     src=src,
                     dst=dst,
@@ -183,7 +182,7 @@ class Restore:
                     },
                 )
             except Exception as EE:
-                msg = [f"ERROR: Could not restore {_r(src0)}."]
+                msg = [f"ERROR: Could not restore {src0!r}."]
                 msg.append(f"Error: {EE}")
                 logger.error("\n".join(msg))
                 with LOCK:

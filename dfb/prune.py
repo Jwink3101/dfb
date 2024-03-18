@@ -19,7 +19,6 @@ from .dstdb import DFBDST
 from .rclonerc import rcpathjoin
 from .threadmapper import thread_map_unordered as tmap
 
-_r = repr
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ class Prune:
             ).fetchall()
 
             if not res:
-                logger.warning(f"No matches for {_r(rpath)}")
+                logger.warning(f"No matches for {rpath!r}")
                 continue
 
             reg, ref = [], []
@@ -92,16 +91,16 @@ class Prune:
             if len(reg) > 1:
                 logger.debug(f"Multiple non-references to {rpath = }")
 
-            msg = f"{_r(rpath)} has {len(res)} entr{'ies' if len(res)>1 else 'y'}. "
+            msg = f"{rpath!r} has {len(res)} entr{'ies' if len(res)>1 else 'y'}. "
             msg += "{len(reg)} regular and {len(ref)} references"
             logger.debug(msg)
 
             for row in reg:
                 rpaths.add((row["rpath"], row["size"]))
-                logger.debug(" delete {_r(row['rpath'])}")
+                logger.debug(" delete {row['rpath']!r}")
 
             for row in ref:
-                msg = f"Deleteing {_r(rpath)} will break {_r(row['ref_rpath'])}."
+                msg = f"Deleteing {rpath!r} will break {row['ref_rpath']!r}."
                 if cliconfig.error_if_referenced:
                     err = True
                     logger.error(msg + " Will not continue")
@@ -109,7 +108,7 @@ class Prune:
                     # Add them. Not really an "rpath" but will have the same effect of
                     # deleting the file.
                     rpaths.add((row["ref_rpath"], 0))
-                    logger.debug(" delete {_r(row['ref_rpath'])}")
+                    logger.debug(" delete {row['ref_rpath']!r}")
         if err:
             msg = "References will break. Use '--no-error-if-referenced' flag to force."
             raise BrokenReferenceError(msg)
@@ -137,7 +136,7 @@ class Prune:
             finally:
                 if file != "-":
                     fp.close()
-                    logger.info(f"Written to {_r(file)}")
+                    logger.info(f"Written to {file!r}")
             return
 
         if self.args.dry_run:
@@ -155,11 +154,11 @@ class Prune:
 
         def _delete(rpath):
             try:
-                logger.info(f"Pruning {_r(rpath)}.")
+                logger.info(f"Pruning {rpath!r}.")
                 rc.delete((self.config.dst, rpath))
                 return rpath
             except subprocess.CalledProcessError as EE:
-                logger.error(f"Could not prune {_r(rpath)}. {EE}")
+                logger.error(f"Could not prune {rpath!r}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
@@ -183,7 +182,7 @@ class Prune:
         for rpath, size in self.rpaths:
             num, units = human_readable_bytes(size)
             paren = f"{num:0.2f} {units}" if size >= 0 else "DEL"
-            _p(f"    {_r(rpath)} ({paren})")
+            _p(f"    {rpath!r} ({paren})")
 
     def upload_snapshots(self):
         name = f"{self.config.now.dt}Z.jsonl"
@@ -256,16 +255,12 @@ class PruneableDFBDST(DFBDST):
             keep_rpaths.update(
                 row["rpath"] for row in group[icut:] if row.get("ref_rpath", None)
             )  # 1d
-            logger.debug(
-                f'(1) {_r(name)} keep {[row["rpath"] for row in group[icut:]]}'
-            )
+            logger.debug(f'(1) {name!r} keep {[row["rpath"] for row in group[icut:]]}')
 
             del_groups[name] = group[:icut]  # 1e
             r0 = [row["rpath"] for row in group[:icut]]
             r1 = [row.get("ref_rpath", None) for row in group[:icut]]
-            logger.debug(
-                f"(1) {_r(name)} consider for del {r0 + list(filter(bool,r1))}"
-            )
+            logger.debug(f"(1) {name!r} consider for del {r0 + list(filter(bool,r1))}")
 
         if subdir:  # 1f
             with self.db() as db:
@@ -309,9 +304,9 @@ class PruneableDFBDST(DFBDST):
             del_rpaths.update(_d)
 
             logger.debug(
-                f'(2a) {_r(name)} temp keep {[row["rpath"] for row in keep_group]}'
+                f'(2a) {name!r} temp keep {[row["rpath"] for row in keep_group]}'
             )
-            logger.debug(f"(2a) {_r(name)} del {_d}")
+            logger.debug(f"(2a) {name!r} del {_d}")
 
             if not keep_group:
                 continue
@@ -328,9 +323,9 @@ class PruneableDFBDST(DFBDST):
             del_rpaths.update(_d)
 
             logger.debug(
-                f'(2b) {_r(name)} temp keep {[row["rpath"] for row in still_keep]}'
+                f'(2b) {name!r} temp keep {[row["rpath"] for row in still_keep]}'
             )
-            logger.debug(f"(2b) {_r(name)} del {_d}")
+            logger.debug(f"(2b) {name!r} del {_d}")
 
             # 2c
             if len(still_keep) > 1:
@@ -339,7 +334,7 @@ class PruneableDFBDST(DFBDST):
             if row["size"] < 0:
                 del_rpaths.add((row["rpath"], row["size"]))
 
-                logger.debug(f'(2c) {_r(name)} del {_r(row["rpath"])}')
+                logger.debug(f'(2c) {name!r} del {row["rpath"]!r}')
 
         # A note: This can be made even more agressive because this may leave behind an
         #         unneeded delete marker. For the most part, this is ignore but see

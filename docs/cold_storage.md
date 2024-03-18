@@ -65,6 +65,10 @@ Note that order *does matter* if you have any prune actions but otherwise doesn'
 
 Note that `dbimport` does *not* upload the files to the remote. You can put them there manually but it won't matter for future imports.
 
+## Alternative approach for backups
+
+Another option is to keep a synced copy of all "snapshots" that dfb uploads. These are stored in the `.dfb/snapshots`. Either manually, scripted, or in the config `post_shell`, these can be synced to a local location. Then when refreshing, you can specify the directory with `--dirs`.
+
 ## Prune
 
 Pruning follows a similar path to backup. First run prune with `--dump`. This will return line-delimited json like

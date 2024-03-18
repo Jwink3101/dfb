@@ -12,6 +12,7 @@ import atexit
 import shutil
 import queue
 import logging
+import math
 import gzip as gz
 from collections import defaultdict
 from textwrap import dedent
@@ -35,8 +36,6 @@ from .utils import (
 from . import _FAIL
 
 logger = logging.getLogger(__name__)
-
-_r = repr
 
 
 class NoCommonHashError(ValueError):
@@ -117,7 +116,7 @@ class Backup:
             finally:
                 if file != "-":
                     fp.close()
-                    logger.info(f"Written to {_r(file)}")
+                    logger.info(f"Written to {file!r}")
             return
 
         stats = self.run_stats()
@@ -126,10 +125,12 @@ class Backup:
             logger.info(line)
         logger.info("-----")
 
+        if not cliconfig.dry_run:
+            self.upload_snapshots()
+
         self.call_shell(mode="post", stats=stats)
 
         if not cliconfig.dry_run:
-            self.upload_snapshots()
             self.upload_logs()
 
     def list_files(self, stats=None):
@@ -188,7 +189,7 @@ class Backup:
 
         subdir = config.cliconfig.subdir or ""  # Make it empty instead of None
         if subdir:
-            msg = f"subdir {_r(subdir)} specified. Filters may break!"
+            msg = f"subdir {subdir!r} specified. Filters may break!"
             logger.warning(msg)
 
         if config.links == "link":
@@ -231,7 +232,7 @@ class Backup:
                     lfull = os.path.join(fsroot, link["real_apath"])
                     link["link_dest"] = os.readlink(lfull)
                 except OSError:
-                    m = f"{_r(link['real_apath'])} could not be read."
+                    m = f"{link['real_apath']!r} could not be read."
                     if os.path.islink(link["real_apath"]):
                         raise LinkError(m)
                     logger.debug(m + " Treating as a file")
@@ -279,7 +280,7 @@ class Backup:
             # information at source. This enables things like using mtime for
             # source-to-source but not for source-to-dest
             if dfile["dstinfo"]:
-                logger.debug(f"Updating {_r(apath)} with src info")
+                logger.debug(f"Updating {apath!r} with src info")
                 new = dfile.copy()
                 new.update(sfile)
                 new["dstinfo"] = 0
@@ -292,7 +293,7 @@ class Backup:
             config.dst_compare if dfile["dstinfo"] else self.config.compare
         )
 
-        msg = [f"Compare {_r(sfile['apath'])} with {attrib = }."]
+        msg = [f"Compare {sfile['apath']!r} with {attrib = }."]
         try:
             s = sfile.get("size", "src_missing_size")
             d = dfile.get("size", "dst_missing_size")
@@ -328,8 +329,8 @@ class Backup:
                 #
                 if (not scheck or not dcheck) and not config.error_on_missing_hash:
                     logger.warning(f"Missing hashes on source and/or dest")
-                    logger.warning(f"  src: {_r(sfile['apath'])}")
-                    logger.warning(f"  dst: {_r(dfile['rpath'])}")
+                    logger.warning(f"  src: {sfile['apath']!r}")
+                    logger.warning(f"  dst: {dfile['rpath']!r}")
                     logger.warning(f"Reverting to 'size' only")
 
                 shared_hashes = set(scheck).intersection(set(dcheck))
@@ -381,7 +382,7 @@ class Backup:
                 and sfile["size"] <= self.config.min_rename_size
             ):
                 logger.debug(
-                    f"Skipped rename track on {_r(sfile['apath'])}. "
+                    f"Skipped rename track on {sfile['apath']!r}. "
                     f"size = {sfile['size']} <= min_rename_size = "
                     f"{self.config.min_rename_size}"
                 )
@@ -402,10 +403,10 @@ class Backup:
             if len(dfiles) == 1:
                 self.moves.append((dfiles[0], sfile))  # dfile,moved sfile
             elif not dfiles:
-                logger.debug(f"no moves for deleted file {_r(apath)}")
+                logger.debug(f"no moves for deleted file {apath!r}")
                 continue
             else:
-                logger.info(f"Too many matches for {_r(apath)}. Not moving")
+                logger.info(f"Too many matches for {apath!r}. Not moving")
 
         # Now we need to remove the moves from new and delete
         undelete = set()
@@ -426,8 +427,9 @@ class Backup:
         # to better enable concurrency.
 
         comb = self.new + self.modified
+
         N = len(comb)
-        apaths = iter(comb)
+        totsize = sum(self.src_files[f]["size"] for f in comb)
 
         def _apath2file(apath):
             ts = self.config.now.ts
@@ -438,6 +440,7 @@ class Backup:
             file["dstinfo"] = False  # Since this is coming from the source
             return file
 
+        apaths = iter(comb)
         files = map(_apath2file, apaths)
 
         if config.cliconfig.dump:
@@ -454,13 +457,13 @@ class Backup:
 
                 link = file.get("linkdata", None)
 
-                msg = f"Uploading {_r(file['apath'])} to {_r(file['rpath'])}"
+                msg = f"Uploading {file['apath']!r} to {file['rpath']!r}"
 
                 logger.info(msg)
 
                 if link:
                     rc.write(dfile, link["link_dest"], _config={"NoCheckDest": True})
-                    m = f"apath = {_r(file['apath'])} is a LINK to {_r(link['link_dest'])}"
+                    m = f"apath = {file['apath']!r} is a LINK to {link['link_dest']!r}"
                     logger.debug(m)
                 else:
                     rc.copyfile(
@@ -473,9 +476,11 @@ class Backup:
                     )
                 return file
             except Exception as EE:
-                logger.error(f"Upload Error: {_r(file['apath'])}. {EE}")
+                logger.error(f"Upload Error: {file['apath']!r}. {EE}")
                 with LOCK:
                     self.errcount += 1
+
+        stats = StatsThread(self.config, N, totsize, daemon=True).start()
 
         files = tmap(_transfer, files, Nt=config.concurrency)
         files = filter(bool, files)
@@ -484,8 +489,6 @@ class Backup:
         # each time. This is trivial compared to upload times. Plus, we want an upload
         # to be recorded in the DB right away
         files = map(self.dstdb.insert, files)
-
-        stats = StatsThread(self.config, N=N, daemon=True).start()
 
         # Make them work
         for file in files:
@@ -536,9 +539,9 @@ class Backup:
             reftxt = json.dumps(ref)
             try:
                 logger.info(
-                    f"Moving {_r(original)} to "
-                    f"{_r(file['apath'])} with "
-                    f"{_r(ref_rpath)}."
+                    f"Moving {original!r} to "
+                    f"{file['apath']!r} with "
+                    f"{ref_rpath!r}."
                 )
                 rc.write(
                     (config.dst, ref_rpath),
@@ -546,7 +549,7 @@ class Backup:
                 )
                 return file
             except Exception as EE:
-                logger.error(f"Reference Error: {_r(file['apath'])}. {EE}")
+                logger.error(f"Reference Error: {file['apath']!r}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
@@ -590,7 +593,7 @@ class Backup:
 
         def _copy(file):
             try:
-                msg = f'"Moving" {_r(file["original"])} to {_r(file["apath"])} via copy'
+                msg = f'"Moving" {file["original"]!r} to {file["apath"]!r} via copy'
 
                 sfile = rcpathjoin(self.config.dst, file["source_rpath"])
                 dfile = rcpathjoin(self.config.dst, file["rpath"])
@@ -607,7 +610,7 @@ class Backup:
                 )
                 return file
             except Exception as EE:
-                logger.error(f"Copy Error: {_r(file['apath'])}. {EE}")
+                logger.error(f"Copy Error: {file['apath']!r}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
@@ -649,11 +652,11 @@ class Backup:
         def _delete(file):
             dfile = file["rpath"]
             try:
-                logger.info(f"Deleting {_r(file['apath'])} with {_r(dfile)}.")
+                logger.info(f"Deleting {file['apath']!r} with {dfile!r}.")
                 rc.write((config.dst, dfile), b"DEL")
                 return file
             except Exception as EE:
-                logger.error(f"Delete Error: {_r(file['apath'])}. {EE}")
+                logger.error(f"Delete Error: {file['apath']!r}. {EE}")
                 with LOCK:
                     self.errcount += 1
 
@@ -676,25 +679,25 @@ class Backup:
         self.action_summary_text.append(m)
         logger.info(m)
         for file in self.new:
-            _p(f"   {_r(file)}")
+            _p(f"   {file!r}")
 
         m = f"Modified: {self.summary(self.modified)}"
         self.action_summary_text.append(m)
         logger.info(m)
         for file in self.modified:
-            _p(f"   {_r(file)}")
+            _p(f"   {file!r}")
 
         m = f"Deleted: {self.summary(self.deleted,src=False)}"
         self.action_summary_text.append(m)
         logger.info(m)
         for file in self.deleted:
-            _p(f"   {_r(file)}")
+            _p(f"   {file!r}")
 
         m = f"Moves: {self.summary([f[0]['apath'] for f in self.moves],src=False)}"
         self.action_summary_text.append(m)
         logger.info(m)
         for file in self.moves:
-            _p(f"   {_r(file[0]['apath'])} --> {_r(file[1]['apath'])}")
+            _p(f"   {file[0]['apath']!r} --> {file[1]['apath']!r}")
 
     def summary(self, files, src=True):
         flist = self.src_files if src else self.dst_files
@@ -771,7 +774,7 @@ class Backup:
 
         for log_dest in log_dests:
             dtxt = rcpathjoin(*listify(log_dest))
-            logger.info(f"Uploading log to {_r(dtxt)}")
+            logger.info(f"Uploading log to {dtxt!r}")
             try:
                 config.rc.copyfile(
                     src=log_copy,
@@ -806,9 +809,10 @@ class Backup:
 
 
 class StatsThread(Thread):
-    def __init__(self, config, N, *args, **kwargs):
+    def __init__(self, config, N, totsize, *args, **kwargs):
         self.config = config
         self.N = N
+        self.totsize = totsize
         self.fcount = 0
 
         # Rather than a while loop with a time.sleep and a conditional,
@@ -830,8 +834,10 @@ class StatsThread(Thread):
     __iadd__ = increment  # += n
 
     def run(self):
-        self.config.rc.call("core/stats-reset")
+        totnum, totunits = human_readable_bytes(self.totsize)
 
+        self.config.rc.call("core/stats-reset")
+        self.config.rc.call("core/stats")  # sets to 0
         while True:
             try:
                 stop = self.stop.get(block=True, timeout=self.config.stats)
@@ -840,18 +846,35 @@ class StatsThread(Thread):
             except queue.Empty:
                 pass
 
-            # Get the average speed. But use our own measure of totals
             stats = self.config.rc.call("core/stats")
-            speednum, speedunits = human_readable_bytes(stats["speed"])
-            totnum, totunits = human_readable_bytes(stats["totalBytes"])
+            msg = [f"STATS:"]
+
             dt = time_format(stats["elapsedTime"])
+            msg.append(f"{dt:5s};")
 
-            msg = [f"STATS: Elapsed {dt};"]
-            msg.append(f"Transfering {len(stats.get('transferring',0))};")
-            msg.append(f"Avg. Speed {speednum:0.2f} {speedunits}/sec;")
-            # stats['totalTransfers'] includes active so use self.fcount
+            msg.append(f"xfer {len(stats.get('transferring',0))};")
 
-            msg.append(f"Total {self.fcount}/{self.N} ({totnum:0.2f} {totunits})")
+            bytesnum, bytesunits = human_readable_bytes(stats["bytes"])
+            msg.append(
+                f"{self.fcount}/{self.N} "  # stats['totalTransfers'] includes active so use self.fcount
+                f"({bytesnum:6.2f} {bytesunits} / {totnum:<6.2f} {totunits});"
+            )
+
+            # use these since they are weighted averages but need to account for each
+            # transfer
+            speed = sum(i["speedAvg"] for i in stats["transferring"])
+            # This is a heuristic approach. Prefer the weighted avg speed but
+            # it can drop to zero. This doesn't have to be perfect.
+            rel = speed / (stats["speed"] + 1e-5 * (speed + 1))  # [0,inf)
+            frac = 2 / (1 + math.exp(-10 * rel)) - 1
+            sp = frac * speed + (1 - frac) * stats["speed"]
+
+            speednum, speedunits = human_readable_bytes(sp)
+            msg.append(f"{speednum:5.2f} {speedunits}/s;")
+
+            eta = round((self.totsize - stats["bytes"]) / sp)
+            msg.append(f"ETA: {time_format(eta)}")
+
             logger.info(" ".join(msg))
 
     def join(self, *a, **k):

@@ -15,8 +15,6 @@ from .rclonerc import rcpathjoin
 
 logger = logging.getLogger(__name__)
 
-_r = repr
-
 
 def snapshot(config):
     args = config.cliconfig
@@ -113,7 +111,7 @@ def ls(config):
         pass  # Just to be more clear
 
     if not table:
-        print(f"No files under {_r(args.path)}. Check the path and the date")
+        print(f"No files under {args.path!r}. Check the path and the date")
         return
 
     table = head_tail_table(
@@ -134,7 +132,7 @@ def file_versions(config):
     versions = dstdb.file_versions(args.filepath, count_refs=args.ref_count)
 
     # Build output
-    out = [f"file: {_r(args.filepath)}"]
+    out = [f"file: {args.filepath!r}"]
 
     table = []
     if args.header:

@@ -40,8 +40,6 @@ from . import __version__
 
 logger = logging.getLogger(__name__)
 
-_r = repr
-
 
 class RcloneCLI:
     """
@@ -441,7 +439,7 @@ class RcloneCLI:
         with tempfile.NamedTemporaryFile(delete=False, mode="wt") as fp:
             for file in files:
                 if file.startswith(".."):
-                    msg = f"Will not upload files above specified location. {_r(file)}"
+                    msg = f"Will not upload files above specified location. {file!r}"
                     warnings.warn(msg)
                 print(file, file=fp)
 
@@ -920,7 +918,7 @@ class RcloneCLI:
         )
 
     def __repr__(self):
-        return f"RcloneCLI(remote={_r(self.remote)})"
+        return f"RcloneCLI(remote={self.remote!r})"
 
     def __truediv__(self, new):
         return RcloneFile(self, new)
