@@ -290,7 +290,6 @@ class Config:
             "dst_compare": {"mtime", "size", "hash", "auto", None},
             "renames": {"size", "mtime", "hash", "auto", False, None},
             "dst_renames": {"size", "mtime", "hash", "auto", False, None},
-            "links": {"skip", "link", "copy"},
             "rename_method": {"reference", "copy", False, None},
             "get_modtime": {True, False, "auto"},
             "get_hashes": {True, False, "auto"},
@@ -313,13 +312,15 @@ class Config:
         if self._config["dst_renames"] is None:  # explicit because could be False
             self._config["dst_renames"] = self._config["renames"]
 
-        if self._config["links"] == "copy":
-            self._config["rclone_flags"].append("--copy-links")
-
         if not self._config.get("dst_atomic_transfer", True):
             logger.info(
                 "WARNING: 'dst_atomic_transfer = False' is deprecated since rclone 1.63 "
                 "handles it for non-atomic remotes"
+            )
+
+        if self._config.get("links", False):
+            logger.info(
+                "WARNING: 'links' is deprecated. The link setting should be specified in rclone_flags"
             )
 
         # Set the config_id but give preference to _uuid
@@ -489,7 +490,11 @@ min_rename_size = 0
 # Example for config password
 #   > from getpass import getpass
 #   > rclone_env = {"RCLONE_CONFIG_PASS": getpass("Password: ")}
-# Not all flags are compatible. Do not use --links (see below)
+#
+# Notes:
+# - This IS where you should specify link flags for local such as 
+#   --links, --skip-links, --copy-links
+# - Not all flags are compatible
 rclone_flags = []
 rclone_env = {}
 
@@ -503,10 +508,6 @@ rclone_exe = "rclone"
 ##          Intermediate Settings           ##
 ##                (optional)                ##
 ##############################################
-
-# How to handle links on local src. 'link' makes .rcloneline files and
-# 'copy' copies the referent. See https://github.com/rclone/rclone/issues/6855
-links = "link"  # {'skip','link','copy'}
 
 # Number of transfers. Use remote-specific flags for additional control such as
 # --s3-upload-concurrency.

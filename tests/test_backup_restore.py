@@ -9,6 +9,7 @@ import re
 import subprocess
 import json
 import itertools
+import shlex
 from textwrap import dedent
 
 p = os.path.abspath("../")
@@ -782,12 +783,27 @@ def test_subdirs():
     assert not os.path.exists("dst/sub2")
 
 
-@pytest.mark.parametrize("mode", ["link", "copy", "skip"])
+@pytest.mark.parametrize("mode", ["link", "link-webdav", "copy", "skip"])
 def test_symlinks(mode):
-    test = testutils.Tester(name="symlinks", src="srcalias:")  # Test with an alias!
+    test = testutils.Tester(name="symlinks", src="srcalias:")
 
-    test.config["links"] = mode
+    linkmode = mode
+    args = []
+    if mode == "link-webdav":
+        linkmode = "link"
+        webdav = testutils.WebDAV(path="dst").start()
+        args = ["--override", f"dst = {webdav.remote!r}"]
+
+    # test.config["links"] = linkmode
+    if linkmode == "link":
+        test.config["rclone_flags"] = ["--links"]
+    elif linkmode == "copy":
+        test.config["rclone_flags"] = ["--copy-links"]
+    elif linkmode == "skip":
+        test.config["rclone_flags"] = ["--skip-links"]
+
     test.config["upload_logs"] = False
+
     test.write_config()
 
     test.write("src/file1.txt", "File ONE")
@@ -799,9 +815,23 @@ def test_symlinks(mode):
     os.symlink("../file1.txt", "src/other/backfile1.txt")
     os.symlink("../sub/file2.txt", "src/other/backfile2.txt")
 
-    test.backup(offset=1)
+    test.backup(*args, offset=1)
+    test.call("restore", "res", *args)
+    test.call("refresh")
 
     if mode == "link":
+        assert os.readlink("dst/link1.19700101000001.txt") == "file1.txt"
+        assert os.readlink("dst/link2.1.19700101000001.txt") == "sub/file2.txt"
+        assert os.readlink("dst/other/backfile1.19700101000001.txt") == "../file1.txt"
+        assert (
+            os.readlink("dst/other/backfile2.19700101000001.txt") == "../sub/file2.txt"
+        )
+        assert os.readlink("dst/sub/link2.2.19700101000001.txt") == "file2.txt"
+
+        # Restore test. Do not need to do them all. Just make sure it's a link
+        assert os.readlink("res/link1.txt") == "file1.txt"
+
+    elif mode == "link-webdav":
         assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
             "file1.txt",
             "link1.txt.rclonelink",
@@ -833,6 +863,10 @@ def test_symlinks(mode):
         )
         assert test.read("dst/sub/link2.2.19700101000001.txt.rclonelink") == "file2.txt"
         assert len(test.tree_sha1s("dst")) == 7
+
+        # Restore test. Do not need to do them all. Just make sure it's a link
+        assert os.readlink("res/link1.txt") == "file1.txt"
+
     elif mode == "copy":
         assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
             "file1.txt",
@@ -854,6 +888,9 @@ def test_symlinks(mode):
         }
         assert not any(os.path.islink(f) for f in testutils.tree("dst"))
         assert len(test.tree_sha1s("dst")) == 2
+
+        assert not os.path.islink("res/link1.txt")
+
     elif mode == "skip":
         assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
             "file1.txt",
@@ -865,6 +902,8 @@ def test_symlinks(mode):
         }
         assert len(test.tree_sha1s("dst")) == 2
 
+        assert not os.path.exists("res/link1.txt")
+
     # Make sure a second copy doesn't mess with this
     back2 = test.backup(offset=3)
     assert back2.modified == back2.moves == back2.deleted == []
@@ -873,29 +912,28 @@ def test_symlinks(mode):
     assert back2.modified == back2.moves == back2.deleted == []
 
 
-def test_symlinks_trick():
-    test = testutils.Tester(name="symlinks_trick")
+def test_symlinks_in_union():
+    """
+    This is a (regression) test for links in a union drive
+    """
+    test = testutils.Tester(name="symlink_in_union")
     test.config["links"] = "link"
     test.config["concurrency"] = 1
     test.config["upload_logs"] = False
+
+    os.makedirs("empty")
+    empty = os.path.abspath("empty")
+    src = test.config["src"]
+
+    env = test.config["rclone_env"]
+    env["RCLONE_UNION_UPSTREAMS"] = shlex.join([src, empty])
+
+    test.config["src"] = ":union:"
     test.write_config()
 
     test.write("src/file1.txt", "File ONE")
     os.symlink("file1.txt", "src/link1.txt")
-    test.write("src/trick.txt.rclonelink", "Not a link")
-
     test.backup("-v", offset=1)
-
-    assert {dict(a)["apath"] for a in test.remote_snapshot()} == {
-        "link1.txt.rclonelink",
-        "file1.txt",
-        "trick.txt.rclonelink",
-    }
-    assert test.read("dst/link1.19700101000001.txt.rclonelink").strip() == "file1.txt"
-    assert test.read("dst/trick.19700101000001.txt.rclonelink").strip() == "Not a link"
-
-    log = test.logs[-1][0]
-    assert "trick.txt' could not be read. Treating as a file" in log
 
 
 def test_snapshots():
@@ -1233,7 +1271,7 @@ def test_min_size():
 
 
 if __name__ == "__main__":
-    test_main("reference")
+    # test_main("reference")
     #     test_main("copy")
     #     test_shell()
     #     test_log_upload()
@@ -1244,10 +1282,11 @@ if __name__ == "__main__":
     #     test_missing_ref()
     #     test_override()
     #     test_subdirs()
-    #     test_symlinks('link')
+    #     test_symlinks("link")
+    #     test_symlinks("link-webdav")
     #     test_symlinks('copy')
-    #     test_symlinks('skip')
-    #     test_symlinks_trick()
+    #     test_symlinks("skip")
+    #     test_symlinks_in_union()
     #     test_snapshots()
     #     test_missing_hashes()
     #     test_metadata(True)

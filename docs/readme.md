@@ -8,4 +8,4 @@
 - [Using dfb with cold storage](cold_storage.md)
 - [Compare Setting Guidance](compare_settings.md)
 - ["FAQs"](FAQs.md)
-- [Symlink Restore](symlink_restore.md)
+- [Symlink Update](symlink_update.md)

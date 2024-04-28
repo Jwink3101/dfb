@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20240428.0
+
+- **Potentially Breaking**: Change the way dfb handles symlinks on local-to-local backups. See [symlink update document](symlink_update.md) for more details and how to convert the remote.
+    -  **Important**: Setting `links` in the config is deprecated. Use the equivalent noted in symlink update document](symlink_update.md) in the `rclone_flags`.
+    - This better matches rclone's default behavior, fixes the prior issues with restore, and closes #1
+
 ## 20240317.0
 
 - Added option to specify a directory (including an rclone remote) of files to import for `advanced dbimport`.

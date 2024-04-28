@@ -173,12 +173,17 @@ class Restore:
                 stxt = rcpathjoin(*listify(src))
                 dtxt = rcpathjoin(*listify(dst))
                 logger.info(f"Transfering {stxt!r} to {dtxt!r}.")
+
+                meta = self.config.metadata
+                if stxt.endswith(".rclonelink"):
+                    meta = False
+
                 rc.copyfile(
                     src=src,
                     dst=dst,
                     _config={
                         "NoCheckDest": self.args.no_check,
-                        "metadata": self.config.metadata,
+                        "metadata": meta,
                     },
                 )
             except Exception as EE:

@@ -155,7 +155,7 @@ You can, of course, do it all manually but (a) it won't check/delete references 
 - [Using dfb with cold storage](docs/cold_storage.md)
 - [Compare Setting Guidance](docs/compare_settings.md)
 - ["FAQs"](docs/FAQs.md)
-- [Symlink Restore](docs/symlink_restore.md)
+- [Symlink Update](docs/symlink_update.md)
 <!--- END AUTO GENERATED -->
 
 ## Mount (EXPERIMENTAL)
@@ -181,7 +181,6 @@ Some notes:
 - Logging in `dfb-mount` is not complete nor does it make much sense at the moment.
 - Restore:
     - It is possible to create edge cases with symlink handling by having non-symlinks on the source names `<name>.rclonelink`. This is still mostly handled but can cause issues with some sources
-    - Restore of symlinks is manual. See above for a Python snippet to rebuild links.
 - Even with logs of files using source data, restore *always* directly uses the remote. Future versions may offer a secondary method to restore that information for certain remotes.
 
 It is not really an "issue" per se, but one downside of this approach is that deleting a file adds a small file smaller than the block size of the system. And moving a file creates a delete and a new file.

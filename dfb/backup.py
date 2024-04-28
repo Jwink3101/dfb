@@ -192,13 +192,6 @@ class Backup:
             msg = f"subdir {subdir!r} specified. Filters may break!"
             logger.warning(msg)
 
-        if config.links == "link":
-            flags.append("--links")
-        elif config.links == "skip":
-            flags.append("--skip-links")
-        else:  # == 'copy'
-            pass  # Already dealt with in config
-
         rcfiles = config.src_rclone.listremote(
             filter_flags=config.filter_flags,
             # fast_list=... # Would be in rclone_flags. Already set
@@ -224,19 +217,6 @@ class Backup:
 
             if hashes := file.pop("Hashes", None):
                 new["checksum"] = hashes
-
-            if new["apath"].endswith(".rclonelink") and config.links == "link":
-                new["linkdata"] = link = {}
-                link["real_apath"] = new["apath"].removesuffix(".rclonelink")
-                try:
-                    lfull = os.path.join(fsroot, link["real_apath"])
-                    link["link_dest"] = os.readlink(lfull)
-                except OSError:
-                    m = f"{link['real_apath']!r} could not be read."
-                    if os.path.islink(link["real_apath"]):
-                        raise LinkError(m)
-                    logger.debug(m + " Treating as a file")
-                    del new["linkdata"]  # To treat as a file
 
             for k, v in file.items():
                 if k in IGNORED_FILE_DATA:
@@ -455,25 +435,24 @@ class Backup:
                 sfile = self.config.src, file["apath"]
                 dfile = self.config.dst, file["rpath"]
 
-                link = file.get("linkdata", None)
+                # link = file.get("linkdata", None)
 
                 msg = f"Uploading {file['apath']!r} to {file['rpath']!r}"
 
                 logger.info(msg)
 
-                if link:
-                    rc.write(dfile, link["link_dest"], _config={"NoCheckDest": True})
-                    m = f"apath = {file['apath']!r} is a LINK to {link['link_dest']!r}"
-                    logger.debug(m)
-                else:
-                    rc.copyfile(
-                        src=sfile,
-                        dst=dfile,
-                        _config={
-                            "NoCheckDest": True,
-                            "metadata": self.config.metadata,
-                        },
-                    )
+                meta = self.config.metadata
+                if sfile[1].endswith(".rclonelink"):
+                    meta = False
+
+                rc.copyfile(
+                    src=sfile,
+                    dst=dfile,
+                    _config={
+                        "NoCheckDest": True,
+                        "metadata": meta,
+                    },
+                )
                 return file
             except Exception as EE:
                 logger.error(f"Upload Error: {file['apath']!r}. {EE}")

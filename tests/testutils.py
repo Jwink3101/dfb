@@ -4,8 +4,13 @@ import shutil
 from pathlib import Path
 import datetime, time
 import random
+import subprocess
 import hashlib
 import shutil
+import atexit
+import logging
+
+logger = logging.getLogger(__name__)
 
 PWD0 = os.path.abspath(os.path.dirname(__file__))
 os.chdir(PWD0)
@@ -18,6 +23,7 @@ import dfb.configuration
 import dfb.cli
 import dfb.dstdb
 from dfb.rclonecli import RcloneCLI as RcloneAPI
+from dfb.rclonerc import random_port
 
 _r = repr
 
@@ -308,4 +314,53 @@ def dict2frozen(item):
 def venn(A, B):
     A = set(A)
     B = set(B)
-    return {"A": A - B, "A∩B": A.intersection(B), "B": B - A}
+    return {r"A\B": A - B, "A∩B": A.intersection(B), r"B\A": B - A}
+
+
+class WebDAV:
+    def __init__(self, path=None, ip=None, port=None):
+        self.ip = ip or "localhost"
+        self.port = port or random_port()
+        self.pwd = path or os.getcwd()
+        self.running = False
+
+    @property
+    def remote(self):
+        if not self.running:
+            return
+        return f":webdav,url='http://{self.ip}:{self.port}',vendor=rclone:"
+
+    def start(self):
+        atexit.register(self.stop)
+
+        cmd = [
+            "rclone",
+            "serve",
+            "webdav",
+            self.pwd,
+            "--addr",
+            f"{self.ip}:{self.port}",
+        ]
+        logger.debug(f"WEBDAV: {cmd = }")
+        self.proc = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        self.running = True
+        logger.debug("START WEBDAV")
+        return self
+
+    def stop(self):
+        if not self.running:
+            return
+        import signal
+
+        self.proc.send_signal(signal.SIGKILL)
+        logger.debug("END WEBDAV")
+        self.running = False
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *_, **__):
+        self.stop()
