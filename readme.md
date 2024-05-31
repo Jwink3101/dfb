@@ -1,22 +1,22 @@
 ***
 
-*Warning*: This tool is still in beta but (a) I've been using it heavily for 9 months without problems, (b) the design is such that even without it, you can get all of your files back, and (c) more testers are good! Use at your own risk but please also provide feedback
+*Warning*: This tool is still in beta but (a) I've been using it heavily for 1+ years without problems, (b) the design is such that even without it, you can get all of your files back, and (c) more testers are good! Use at your own risk but please also provide feedback
 
 ***
 
 
 # dfb - Dated File Backup
 
-The dfb backup tool utilizes rclone to create full-file, append-only backups that allow easy restoration to any point in time. Files are uploaded with dates appended to their names and deletes are noted with a delete marker. The design focuses on simplicity, easy understanding, and restoration without special tools. It prioritizes full-file backups stored natively on the remote, continuous rollback capability, straightforward backups and restores, and support for append-only storage. To accomplish this, it sacrifices some efficiency and advanced features. It may not be the the most efficient, advanced, fast, featurefull, sexy, or sophisticated backup tool these are great tradeoffs for peace-of-mind with backups! 
+The dfb backup tool utilizes rclone to create full-file, append-only backups that allow easy restoration to any point in time. Files are uploaded with dates appended to their names and deletes are noted with a delete marker. The design focuses on simplicity, easy understanding, and restoration without special tools. It prioritizes full-file backups stored natively on the remote, continuous rollback capability, straightforward backups and restores, and support for append-only storage. To accomplish this, it sacrifices some efficiency and advanced features. It may not be the the most efficient, advanced, fast, featurefull, sexy, or sophisticated backup tool but these are great tradeoffs for peace-of-mind with backups! 
 
-Many other popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap], and rsync with `--link-dest` ([example][rs]) have the same (or even *worse*) tradeoffs and don't support cloud storage. Block-based backup tools like [restic][restic], [kopia][kopia], [borg][borg], and [Duplicacy][dup] offer increased efficiency and deduplication but are more prone to errors, more complicated, and require the tool to view and restore.
+Many other popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap] and rsync with `--link-dest` ([example][rs]) have the same (or even *worse*) tradeoffs and don't support cloud storage. Block-based backup tools like [restic][restic], [kopia][kopia], [borg][borg], and [Duplicacy][dup] offer increased efficiency and deduplication but are more prone to errors, more complicated, and are all but impossible to restore without the original tool. Their complexity also leads to increased risk of corruption.
 
 Design Tenets:
 
-- **Easy to understand, interrogate, and restore**. The backup format is easily comprehended and can be reverse engineered simply. No special tools are needed to restore in theory (except if using crypt, you need to decrypt it). The format is about as straightforward as possible
-- **Backup full copies of all files**. All files are full copies stored natively and can be downloaded right away, with or without special tools. This is *less efficient* than block-based tools, but that comes with the advantages noted above. Only exception is references for moved files which are easy to understand and use.
-- **Restore to any point in time**. Can easily rollback to any point-in-time (unless pruned)
-    - **Continuous in time is better than snapshots**. Many tools work off of synthetic snapshots. This does enable pruning like "keep 1 snapshot per week" but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point-in-time continuously *and* look at all versions of a specific file (with or without the tool itself to faciliate). Pruning capabilities let you specify a time and/or a number of versions to keep. 
+- **Easy to understand, interrogate, and restore**. The backup format is easily comprehended and can be reverse engineered simply. No special tools are needed to restore in theory (except if using crypt, you need to decrypt it). The format is about as straightforward as possible!
+- **Backup full copies of all files**. All files are full copies stored natively and can be downloaded right away (except for reference files), with or without special tools. This is *less efficient* than block-based tools, but that comes with the advantages noted above.
+- **Restore to any point in time**. Can easily rollback to any point-in-time in the backup.
+    - **Continuous in time is better than snapshots**. Many tools work off of synthetic snapshots. Snapshots enable pruning like "keep 1 snapshot per week" but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point-in-time continuously *and* look at all versions of a specific file (with or without the tool itself to faciliate). dfb can still be pruned of "prune files older than XYZ days" and/or "prune all but that last N versions".
 - **Support append-only/immutable storage natively**. There is never a need to delete files except for pruning. Nothing ever gets renamed, deleted, or modified.
 
 
@@ -40,11 +40,11 @@ When files are backed up, they are renamed to have the date of the backup in the
 
     <filename>.YYYYMMDDhhssmm<optional R or D>.ext
 
-where the time is ***always in UTC (Z) time**. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is a tiny file with `D` and if a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
+where the time is **_always_ in UTC (Z) time**. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is marked with a tiny file with `D`. If a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
 
 Directory names are unchanged.
 
-### References
+### Reference Fukes
 
 The only exception to full-files is references. References write JSON data like[^refv1]:
 
@@ -54,7 +54,7 @@ The only exception to full-files is references. References write JSON data like[
 
 [^refv1]: Older versions were just a single line with the absolute path to the reference. This implied version 1 was less flexible and made for some other issues.
 
-Note that references *are* considered and guarded when pruning (with associated tests). Be careful when pruning manually!
+Note that references *are* considered and guarded when pruning (with associated tests). Be careful when pruning manually so as to not break a reference file.
 
 ## Install
 
@@ -68,9 +68,7 @@ To start, run:
 
     $ dfb init path/to/config.py
 
-The config file is **heavily and extensively documented**. It is read on Python without any sandboxing so make sure it is trusted. Some variables are defined inline including `os` and a few modules. The variables `__file__` and `__dir__` are `pathlib.Path` objects for the config file and the directory of the config file respectively. These can be used to specify paths to things like files for `--filter-from`.
-
-For the most part, only the `src` and `dst` need to be set. Maybe `filter_flags`. The rest can be ignored or explored if interested
+The config file is **heavily and extensively documented**. It is read in Python without any sandboxing so make sure it is trusted! Some variables are defined inline including `os` and a few modules. The variables `__file__` and `__dir__` are `pathlib.Path` objects for the config file and the directory of the config file respectively. These can be used to specify paths to things like files for `--filter-from` rclone flag.
 
 ## Simple Usage
 
@@ -78,7 +76,12 @@ Assuming this is a new setup, just run it:
 
     $ dfb backup --config path/to/config.py
     
-or set the environment `$DFB_CONFIG_FILE=path/to/config.py`. 
+Or set the environment:
+
+```bash
+export DFB_CONFIG_FILE=path/to/config.py
+$ dfb backup
+```
 
 Or, directly execute the config file (it has a custom shebang):
 
@@ -107,11 +110,11 @@ Note that, depending on the configuration, not all data may be in the database. 
 
 The database is stored in:
 
-    <rclone cache dir>/DFB/<_uuid from config>.db
+    <rclone cache dir>/DFB/<config_id from config>.db
 
 Where "`rclone cache dir`" is found from: `$ rclone config paths`. See also [Advanced Settings](docs/adv_settings.md).
 
-When refreshing the database, dfb will also optionally read the logs of all uploaded files to fill in source-specific metadata and hashes. These are *secondary* to the operation of dfb and the native remote storage is sufficient to restore (with its own limitations).
+When refreshing the database, dfb will also optionally read the logs of all uploaded files to fill in source-specific metadata and hashes and speed up references. These are *secondary* to the operation of dfb and the native remote storage is sufficient to restore (up to the limitations of the remote).
 
 ## Pruning
 
@@ -179,8 +182,6 @@ Some notes:
 ## Known Issues
 
 - Logging in `dfb-mount` is not complete nor does it make much sense at the moment.
-- Restore:
-    - It is possible to create edge cases with symlink handling by having non-symlinks on the source names `<name>.rclonelink`. This is still mostly handled but can cause issues with some sources
 - Even with logs of files using source data, restore *always* directly uses the remote. Future versions may offer a secondary method to restore that information for certain remotes.
-
-It is not really an "issue" per se, but one downside of this approach is that deleting a file adds a small file smaller than the block size of the system. And moving a file creates a delete and a new file.
+    - Example: If the remote doesn't support mtime, even if mtime is used for backups based on the logs and local database, restore will not restore mtime.
+- Deletes are marked with a 3 byte file (just ASCII encoded `DEL`). This is smaller than most block sizes so they take more space on a local filesystem.

@@ -1,6 +1,7 @@
 """
 Prune
 """
+
 import datetime
 import re
 import sys
@@ -168,7 +169,7 @@ class Prune:
         for _ in rpaths:
             pass
 
-        self.upload_snapshots()
+        self.dstdb.push_snapshots()
 
     def summary(self):
         _p = logger.debug
@@ -183,28 +184,6 @@ class Prune:
             num, units = human_readable_bytes(size)
             paren = f"{num:0.2f} {units}" if size >= 0 else "DEL"
             _p(f"    {rpath!r} ({paren})")
-
-    def upload_snapshots(self):
-        name = f"{self.config.now.dt}Z.jsonl"
-        snap_src0 = self.config.tmpdir / name
-
-        if not snap_src0.exists() or not snap_src0.stat().st_size:
-            return
-
-        snap_srcz = self.config.tmpdir / f"{name}.gz"
-
-        with gz.open(str(snap_srcz), "wb") as fz, snap_src0.open("rb") as fu:
-            while block := fu.read(3 * 1024 * 1024):  # 3 MiB
-                fz.write(block)
-
-        self.config.rc.copyfile(
-            src=snap_srcz,
-            dst=(
-                self.config.dst,
-                f".dfb/snapshots/{self.config.now.obj.strftime('%Y/%m')}/{name}.gz",
-            ),
-            _config={"NoCheckDest": True},
-        )
 
 
 class PruneableDFBDST(DFBDST):
@@ -375,8 +354,7 @@ class PruneableDFBDST(DFBDST):
 
         item = {"_V": 1, "_action": "prune", "rpath": rpath}
 
-        self.config.tmpdir.mkdir(exist_ok=True, parents=True)
-        with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
+        with self.snap_file.open(mode="at") as fp:
             print(json.dumps(item), file=fp, flush=True)
 
         return rpath

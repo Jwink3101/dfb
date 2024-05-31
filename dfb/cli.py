@@ -102,9 +102,6 @@ def parse(argv=None, shebanged=False):
     global_group.add_argument(
         "--temp-dir", help="Specify a temp dir. Otherwise will use Python's default"
     )
-    #     global_group.add_argument(
-    #         "--_return-config", action="store_true", help=argparse.SUPPRESS
-    #     )
 
     when_parent = argparse.ArgumentParser(add_help=False)
     when_group = when_parent.add_argument_group(
@@ -470,6 +467,7 @@ def parse(argv=None, shebanged=False):
         help="Export mode. Includes _all_ entries, not just the final one",
     )
     snap.add_argument(
+        "-O",
         "--output",
         help="""
         Specify an output file. Otherwise will print to stdout. If the file ends in .gz
@@ -621,6 +619,15 @@ def parse(argv=None, shebanged=False):
         action="store_true",
         help="Reset the DB before import. Call without files to *just* reset",
     )
+    dbimport.add_argument(
+        "--upload",
+        action="store_true",
+        help="""
+            Uploads the imported file(s). Will put them in a subdirectory of the snapshots
+            with the current time and label each file as 'N.{filename}'
+            """,
+    )
+
     #################################################
     ## Advanced prune path
     #################################################
@@ -803,6 +810,7 @@ def _cli(cliconfig):
                 cliconfig.files,
                 cliconfig.dirs,
                 reset=cliconfig.reset,
+                upload=cliconfig.upload,
             )
             return config
         elif cliconfig.command == "snapshot":

@@ -1042,6 +1042,7 @@ def test_snapshots():
             assert line["_action"] == "prune"
 
     # reset, import again then apply.
+    # Also test the uploads
     test.call(
         "advanced",
         "dbimport",
@@ -1050,6 +1051,8 @@ def test_snapshots():
         "oe3.jsonl",
         "oe5.jsonl",
         "prune.jsonl.gz",
+        "--upload",
+        offset=1_234_567_890,
     )
     log = test.logs[-1][0]
     assert "Imported 0 files and will prune 4" in log
@@ -1061,6 +1064,10 @@ def test_snapshots():
         exp = [json.loads(line) for line in fp]
         exp = {frozenset((k, f[k]) for k in keys) for f in exp}
     assert exp != cumupl, "Should NOT match with the exports because it was pruned!"
+
+    # test that the files got uploaded. Should NOT be compressed unless already
+    for ff in ["0.oe1.jsonl", "1.oe3.jsonl", "2.oe5.jsonl", "3.prune.jsonl.gz"]:
+        assert (test.pwd / "dst/.dfb/snapshots/2009/02/20090213233130Z" / ff).exists()
 
 
 def test_missing_hashes():
@@ -1270,8 +1277,35 @@ def test_min_size():
     assert not os.path.exists("dst/large2.19700101000005R.txt")
 
 
+def test_push_snapshots():
+    """
+    Test pushing snapshot files to the destination
+
+    Note that testing for dbimport is done in tha
+    """
+    test = testutils.Tester(name="push_snap")
+    test.write_config()
+
+    test.write_pre("src/file.txt", "0")
+
+    # Write a .jsonl file that mimics being left from last time. Should also be compressed
+    tfile = test.pwd / "cache/DFB/test_push_snap.snap" / "2022/06" / "test.jsonl"
+    tfile.parent.mkdir(exist_ok=True, parents=True)
+    tfile.write_text("this is a dummy file")
+
+    test.backup(offset=1)
+
+    # Make sure it got backed up
+    qfile = test.pwd / "dst/.dfb/snapshots/2022/06/test.jsonl.gz"
+
+    assert not tfile.exists(), "didn't get moved"
+    assert qfile.exists()
+    assert not qfile.with_suffix("").exists(), "didn't get compressed"
+    assert gz.open(str(qfile), "rt").read() == "this is a dummy file", "not compressed"
+
+
 if __name__ == "__main__":
-    # test_main("reference")
+    test_main("reference")
     #     test_main("copy")
     #     test_shell()
     #     test_log_upload()
@@ -1294,6 +1328,7 @@ if __name__ == "__main__":
     #     test_dump()
     #     test_auto()
     #     test_min_size()
+    #     test_push_snapshots()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

@@ -272,6 +272,12 @@ class Config:
         self.src_rclone.debug = lambda x: logger.debug(f"src-rclone: {x}")
         self.dst_rclone.debug = lambda x: logger.debug(f"dst-rclone: {x}")
 
+        # Set the db_cachedir here. Needed to wait for rclone cli objects
+        if not (dbcache_dir := self._config.get("dbcache_dir", None)):
+            dbcache_dir = Path(self.dst_rclone.config_paths["Cache dir"]) / "DFB"
+        self._config["dbcache_dir"] = Path(dbcache_dir)
+        self._config["snap_cache_dir"] = self.dbcache_dir / f"{self.config_id}.snap"
+
         return self
 
     def _validate(self):

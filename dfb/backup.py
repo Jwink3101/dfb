@@ -2,6 +2,7 @@
 Main backup object. This will list the source (and reset/list the dest if --refresh)
 then compare.
 """
+
 import sys, os
 import time
 import json
@@ -126,7 +127,7 @@ class Backup:
         logger.info("-----")
 
         if not cliconfig.dry_run:
-            self.upload_snapshots()
+            self.dstdb.push_snapshots()
 
         self.call_shell(mode="post", stats=stats)
 
@@ -435,10 +436,7 @@ class Backup:
                 sfile = self.config.src, file["apath"]
                 dfile = self.config.dst, file["rpath"]
 
-                # link = file.get("linkdata", None)
-
                 msg = f"Uploading {file['apath']!r} to {file['rpath']!r}"
-
                 logger.info(msg)
 
                 meta = self.config.metadata
@@ -762,31 +760,6 @@ class Backup:
             except Exception as e:
                 logger.error(f"Failed: {e}")
 
-    def upload_snapshots(self):
-        name = f"{self.config.now.dt}Z.jsonl"
-        snap_src0 = self.config.tmpdir / name
-
-        if not snap_src0.exists() or not snap_src0.stat().st_size:
-            return
-
-        snap_srcz = self.config.tmpdir / f"{name}.gz"
-
-        with gz.open(str(snap_srcz), "wb") as fz, snap_src0.open("rb") as fu:
-            while block := fu.read(3 * 1024 * 1024):  # 3 MiB
-                fz.write(block)
-
-        self.config.rc.copyfile(
-            src=snap_srcz,
-            dst=(
-                self.config.dst,
-                # Upload to dated dirs too so that they don't fill with too many
-                # files if this is run often.
-                f".dfb/snapshots/{self.config.now.obj.strftime('%Y/%m')}/{name}.gz",
-            ),
-            _config={"NoCheckDest": True},
-        )
-
-
 class StatsThread(Thread):
     def __init__(self, config, N, totsize, *args, **kwargs):
         self.config = config
@@ -831,7 +804,7 @@ class StatsThread(Thread):
             dt = time_format(stats["elapsedTime"])
             msg.append(f"{dt:5s};")
 
-            msg.append(f"xfer {len(stats.get('transferring',0))};")
+            msg.append(f"xfer {len(stats.get('transferring',''))};")
 
             bytesnum, bytesunits = human_readable_bytes(stats["bytes"])
             msg.append(

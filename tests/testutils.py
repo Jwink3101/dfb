@@ -318,9 +318,9 @@ def venn(A, B):
 
 
 class WebDAV:
-    def __init__(self, path=None, ip=None, port=None):
-        self.ip = ip or "localhost"
+    def __init__(self, path=None, ip="localhost", port=None):
         self.port = port or random_port()
+        self.ip = ip
         self.pwd = path or os.getcwd()
         self.running = False
 

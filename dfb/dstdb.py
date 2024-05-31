@@ -1,6 +1,7 @@
 """
 Database of the destination. Includes the tools and methods to refresh it.
 """
+
 import os
 from pathlib import Path
 import sqlite3
@@ -9,6 +10,8 @@ import io
 import json
 import logging
 import string
+import shutil
+import gzip as gz
 from functools import partialmethod
 from textwrap import dedent, indent
 
@@ -54,14 +57,18 @@ class DFBDST:
     def __init__(self, config):
         self.config = config
         self.dst_rclone = dst_rclone = config._config["dst_rclone"]
+        self.dbcache_dir = config.dbcache_dir
 
-        if not (dbcache_dir := getattr(config, "dbcache_dir", None)):
-            dbcache_dir = Path(dst_rclone.config_paths["Cache dir"]) / "DFB"
+        self.snap_file = (
+            self.config.snap_cache_dir
+            / self.config.now.obj.strftime("%Y/%m")
+            / f"{self.config.now.dt}Z.jsonl"
+        )
+        self.snap_file.parent.mkdir(exist_ok=True, parents=True)
 
-        self.dbcache_dir = Path(dbcache_dir)
         dbpath = self.dbcache_dir / f"{config.config_id}.db"
-
         dbpath.parent.mkdir(exist_ok=True, parents=True)
+
         self.dbpath = dbpath
 
         self.init()
@@ -384,7 +391,7 @@ class DFBDST:
         file["dstinfo"] = False
         return file
 
-    def dbimport(self, exportfiles, exportdirs, reset=False):
+    def dbimport(self, exportfiles, exportdirs, reset=False, upload=False):
         if self.config.disable_refresh:
             logger.error("DB Import not allowed due to 'disable_refresh = True")
             logger.error("Run with `--override 'disable_refresh = False'` to override")
@@ -473,6 +480,16 @@ class DFBDST:
                 )
             logger.info(f"Pruned {len(prune)} files from all exports")
 
+        if upload:
+            snapdir = self.snap_file.parent / self.snap_file.stem
+            snapdir.mkdir(parents=True)  # Shouldn't already exists
+
+            for ii, loadfile in enumerate(loadfiles):
+                dst = snapdir / f"{ii}.{loadfile.name}"
+                shutil.copy2(loadfile, dst)
+
+            self.push_snapshots(compress=False)
+
     def insert_or_replace_many(self, files, *, insert, replace):
         """
         Allows inserting or replacing. This requires being explicit to avoid wrong
@@ -496,10 +513,10 @@ class DFBDST:
         db = self.db()
         with db:
             db.executemany(sql, rows)
-        db.commit()
-        db.close()
+        # db.commit()
+        # db.close()
 
-        with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
+        with self.snap_file.open(mode="at") as fp:
             for file in files:
                 print(json.dumps(file), file=fp, flush=True)
 
@@ -520,22 +537,8 @@ class DFBDST:
             both:      : db._insert_or_replace(file,insert=True,replace=True)
 
         """
-        action = []
-        if insert:
-            action.append("INSERT")
-        if replace:
-            action.append("REPLACE")
-        action = " OR ".join(action)
-        sql = f"{action} INTO items VALUES ({','.join('?' for _ in DFBDST.COLS)})"
-
-        with self.db() as db:
-            db.execute(sql, DFBDST.dict2fullrow(file))
-
-        with open(self.config.tmpdir / f"{self.config.now.dt}Z.jsonl", "at") as fp:
-            print(json.dumps(file), file=fp, flush=True)
-
-        return file
-
+        return self.insert_or_replace_many([file], insert=insert, replace=replace)
+        
     insert = partialmethod(_insert_or_replace, insert=True, replace=False)
     replace = partialmethod(_insert_or_replace, insert=False, replace=True)
     insert_or_replace = partialmethod(_insert_or_replace, insert=True, replace=True)
@@ -940,6 +943,42 @@ class DFBDST:
                 group = [row]
                 name = row["apath"]
         yield name, group  # Last item
+
+    def push_snapshots(self, compress=True):
+        """
+        Compress (optional) and push all snapshots.
+        This will catch ones from interrupted runs
+        """
+        for snap_file in self.config.snap_cache_dir.rglob("**/*.jsonl"):
+            if snap_file.stat().st_size == 0:
+                logger.debug(f"Empty snapshot {str(snap_file)!r}. Unlink")
+                snap_file.unlink()
+            elif compress:
+                snapz = snap_file.with_suffix(".jsonl.gz")
+                with gz.open(str(snapz), "wb") as fz, snap_file.open("rb") as fu:
+                    shutil.copyfileobj(fu, fz)
+                snap_file.unlink()
+                logger.debug(f"Compressed {str(snap_file)!r} to {str(snapz)!r}")
+
+        rc = self.config.rc
+        rc.start()
+
+        params = {
+            "createEmptySrcDirs": False,
+            "deleteEmptySrcDirs": True,  # Cleans local
+        }
+        params["_config"] = {
+            "NoCheckDest": True,  # We know they shouldn't exists
+            "NoTraverse": True,
+            "NoUpdateDirModTime": True,  # Don't care
+            "Transfers": self.config.concurrency,
+            "Metadata": self.config.metadata,
+        }
+        params["srcFs"] = str(self.config.snap_cache_dir)
+        params["dstFs"] = rcpathjoin(self.config.dst, ".dfb/snapshots")
+
+        logger.debug(f"moving files from {params['srcFs']!r} to {params['dstFs']!r}")
+        rc.call("sync/move", params=params)
 
     @classmethod
     def dict2fullrow(cls, rowdict):

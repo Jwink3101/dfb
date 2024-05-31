@@ -2,6 +2,16 @@
 
 (newest on top)
 
+## 20240531.0
+
+- Will now compress and upload snapshot files from incomplete runs (such as having errored, etc).
+    - Snapshots are now written to the cache dir instead of temp dir so that they persist across failed runs.
+- Adds `--upload` to `advanced dbimport` to upload the import files to the repository
+- Minor Bug Fixes:
+    - stats with no current transfers
+
+These additions further hardens the snapshots as a *secondary* source of information. The files themselves remain ground-truth regardless!
+
 ## 20240428.0
 
 - **Potentially Breaking**: Change the way dfb handles symlinks on local-to-local backups. See [symlink update document](symlink_update.md) for more details and how to convert the remote.
