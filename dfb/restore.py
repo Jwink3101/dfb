@@ -86,7 +86,7 @@ class Restore:
             before=args.before,
             after=args.after,
             select="apath,rpath,size",
-            conditions=[("apath = ?", args.source)],
+            conditions=[("apath = :file", {"file": args.source})],
         ).fetchone()
 
         if not row:

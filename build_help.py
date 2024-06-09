@@ -21,6 +21,7 @@ restore-dir
 restore-file
 ls
 snapshot
+tree
 versions
 prune
 advanced

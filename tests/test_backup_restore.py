@@ -106,7 +106,7 @@ def test_main(rename_method):
 
     # Test the move
     refitem = test.dstdb.snapshot(
-        conditions=[("apath = ?", "sub2/moved.txt")]
+        conditions=[("apath = :pp", {"pp": "sub2/moved.txt"})]
     ).fetchone()
     refitem = test.dstdb.fullrow2dict(refitem)
 

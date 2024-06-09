@@ -36,6 +36,7 @@ Commands:
                         time
     snapshot            Recursively list the files in line-delimited JSON at the
                         optionally specified time
+    tree                Recursively list files in a tree
     versions            Show all versions of a file.
     timestamps          List all timestamps in the backup. Note that this will include
                         ones that were nominally pruned but without all files
@@ -435,7 +436,7 @@ Listing Settings:
 ```text
 usage: dfb snapshot [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
                     [--after TIMESTAMP] [--only TIMESTAMP] --config file
-                    [-o 'OPTION = VALUE'] [-d | -e] [--output OUTPUT]
+                    [-o 'OPTION = VALUE'] [-d | -e] [-O OUTPUT]
                     [path]
 
 positional arguments:
@@ -446,8 +447,75 @@ options:
   -d, --deleted, --del  List deleted files as well. Specify twice to ONLY include
                         deleted files
   -e, --export          Export mode. Includes _all_ entries, not just the final one
-  --output OUTPUT       Specify an output file. Otherwise will print to stdout. If the
+  -O OUTPUT, --output OUTPUT
+                        Specify an output file. Otherwise will print to stdout. If the
                         file ends in .gz or .xz, will use the respective compression.
+
+Global Settings:
+  Default verbosity is 1 for backup/restore/prune and 0 for listing
+
+  -v, --verbose, --debug
+                        +1 verbosity
+  -q, --quiet           -1 verbosity
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+
+Time Specification:
+  All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-
+  DD[T]HH:MM:SS) with or without spaces, colons, dashes, "T", etc. Can optionally
+  specify a numeric time zone (e.g. -05:00) or 'Z'. If no timezone is specified, it
+  is assumed *local* time. Alternatively, can specify unix time with a preceding 'u'
+  (e.g. 'u1678560662'). Or can specify a time difference from the current time with
+  any (and only) of the following: second[s], minute[s], hour[s], day[s], week[s].
+  Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
+  also specify "now" for the current time.
+
+  --at TIMESTAMP, --before TIMESTAMP
+                        Timestamp at which to show the files. If not specified, will
+                        be the latest. Note that if '--after' is set, this will not be
+                        the full snapshot in time.
+  --after TIMESTAMP     Only show files after the specified time. Note that this means
+                        the '--at' will not be the full snapshot.
+  --only TIMESTAMP      Only show files AT the specified time. Shortcut for '--before
+                        TIMESTAMP --after TIMESTAMP' since both are inclusive. Useful
+                        if the exact timestamp is known such as from the 'timestamps'
+                        command.
+
+Config & Cache Settings:
+  --config file         (Required) Specify config file. Can also be specified via the
+                        $DFB_CONFIG_FILE environment variable or is implied if
+                        executing the config file itself. $DFB_CONFIG_FILE is
+                        currently not set.
+  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be proper
+                        Python (e.g. quoted strings). Example: --override "compare =
+                        'mtime'". Override text is evaluated before *and* after the
+                        config file however, the variables 'pre' and 'post' are
+                        defined as True or False if it is before or after the config
+                        file. These can be used with conditionals to control
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
+
+```
+
+# tree
+
+
+```text
+usage: dfb tree [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
+                [--after TIMESTAMP] [--only TIMESTAMP] --config file
+                [-o 'OPTION = VALUE'] [-d] [--max-depth N]
+                [path]
+
+positional arguments:
+  path                  Starting path. Defaults to the top
+
+options:
+  -h, --help            show this help message and exit
+  -d, --deleted, --del  List deleted files as well. Specify twice to ONLY include
+                        deleted files
+  --max-depth N         Specify depth. The original path is 1. Default is none
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -664,7 +732,7 @@ Commands:
 ```text
 usage: dfb advanced dbimport [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                              [-o 'OPTION = VALUE'] [--files [file ...]]
-                             [--dirs [dir ...]] [--reset]
+                             [--dirs [dir ...]] [--reset] [--upload]
                              [files ...]
 
 [ADVANCED] Import file(s) and append to database. Will overwrite any existing data if
@@ -683,6 +751,9 @@ options:
                         local. Will automatically decompress .gz or .xz files. Will
                         always import files then directories
   --reset               Reset the DB before import. Call without files to *just* reset
+  --upload              Uploads the imported file(s). Will put them in a subdirectory
+                        of the snapshots with the current time and label each file as
+                        'N.{filename}'
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing

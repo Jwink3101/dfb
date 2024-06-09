@@ -474,6 +474,35 @@ def parse(argv=None, shebanged=False):
         or .xz, will use the respective compression.""",
     )
 
+    tree = subparsers["tree"] = subpar.add_parser(
+        "tree",
+        parents=[global_parent, list_parent, config_global],
+        help="""
+            Recursively list files in a tree
+            """,
+    )
+    tree.add_argument(
+        "-d",
+        "--deleted",
+        "--del",
+        dest="deleted",
+        action="count",
+        default=0,
+        help="""
+            List deleted files as well.  
+            Specify twice to ONLY include deleted files""",
+    )
+
+    tree.add_argument(
+        "--max-depth",
+        type=int,
+        metavar="N",
+        default=-1,
+        help="""
+            Specify depth. The original path is 1. Default is none
+            """,
+    )
+
     versions = subparsers["versions"] = subpar.add_parser(
         "versions",
         epilog="""Fields are [reference_count],size,mtime,timestamp,[real-path]. 
@@ -817,6 +846,11 @@ def _cli(cliconfig):
             from .listing import snapshot
 
             snapshot(config)
+            return config
+        elif cliconfig.command == "tree":
+            from .listing import tree
+
+            tree(config)
             return config
         elif cliconfig.command == "ls":
             from .listing import ls

@@ -7,9 +7,9 @@
 
 # dfb - Dated File Backup
 
-The dfb backup tool utilizes rclone to create full-file, append-only backups that allow easy restoration to any point in time. Files are uploaded with dates appended to their names and deletes are noted with a delete marker. The design focuses on simplicity, easy understanding, and restoration without special tools. It prioritizes full-file backups stored natively on the remote, continuous rollback capability, straightforward backups and restores, and support for append-only storage. To accomplish this, it sacrifices some efficiency and advanced features. It may not be the the most efficient, advanced, fast, featurefull, sexy, or sophisticated backup tool but these are great tradeoffs for peace-of-mind with backups! 
+The dfb backup tool utilizes rclone to create full-file, append-only backups that allow easy restoration to any point in time. Files are uploaded with the upload date appended to its name. The design focuses on simplicity, easy understanding, and restoration without special tools. It prioritizes full-file backups stored natively on the remote, continuous rollback capability, straightforward backups and restores, and support for append-only storage. To accomplish this, it sacrifices some efficiency and advanced features. It may not be the the most efficient, advanced, fast, featurefull, sexy, or sophisticated backup tool but these are great tradeoffs for peace-of-mind with backups! 
 
-Many other popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap] and rsync with `--link-dest` ([example][rs]) have the same (or even *worse*) tradeoffs and don't support cloud storage. Block-based backup tools like [restic][restic], [kopia][kopia], [borg][borg], and [Duplicacy][dup] offer increased efficiency and deduplication but are more prone to errors, more complicated, and are all but impossible to restore without the original tool. Their complexity also leads to increased risk of corruption.
+Many other popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap] and rsync with `--link-dest` ([example][rs]) have the same (or even *worse*) tradeoffs and don't support cloud storage. Block-based backup tools like [restic][restic], [kopia][kopia], [borg][borg], and [Duplicacy][dup] offer increased efficiency and deduplication but are more prone to errors/corruption, more complicated, and are all but impossible to restore without the original tool. Their complexity also leads to increased risk of corruption.
 
 Design Tenets:
 
@@ -44,9 +44,9 @@ where the time is **_always_ in UTC (Z) time**. When a file is modified at the s
 
 Directory names are unchanged.
 
-### Reference Fukes
+### Reference Files
 
-The only exception to full-files is references. References write JSON data like[^refv1]:
+The only exception to full-file backups are references. References write JSON data like[^refv1]:
 
 ```json
 {"ver": 2, "rel": "<RELATIVE path to referenced file>"}

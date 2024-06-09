@@ -538,25 +538,31 @@ class DFBDST:
 
         """
         return self.insert_or_replace_many([file], insert=insert, replace=replace)
-        
+
     insert = partialmethod(_insert_or_replace, insert=True, replace=False)
     replace = partialmethod(_insert_or_replace, insert=False, replace=True)
     insert_or_replace = partialmethod(_insert_or_replace, insert=True, replace=True)
 
-    def snapshot(
+    def _snapshot_query_builder(
         self,
         *,
         path="",
         before=None,
         after=None,
         select="*",
+        groupselect="*",
         export=False,
         remove_delete=True,
         delete_only=False,
         conditions=None,
+        query_prefix="snap",
     ):
         """
-        Build a query.
+        Build a query for snapshots. This can then be evaluated later directory or as a
+        subquery.
+
+        Inputs:
+        -------
 
         path: ''
             Starting path
@@ -570,7 +576,11 @@ class DFBDST:
             timestamp_parser. Times are inclusive on both ends
 
         select
-            What to return.
+            What to return. Used after the GROUP BY statement
+
+        groupselect
+            Select inside the GROUP BY statement. Useful for additional values
+            but MUST also include "*"
 
         export [False]
             If True, includes multiples. Will override remove_delete and delete_only
@@ -583,31 +593,55 @@ class DFBDST:
             Only show deleted items. If used with remove_delete, will get nothing
 
         conditions:
-            List of additional (sql,val) pairs. Warning: Do not let sql be user input.
-            Examples: ('apparentparent LIKE ?','a/sub/path/')
+            List of additional (sql,param_dict) pairs. Warning: Do not let sql be user input.
+            Examples: ('apparentparent LIKE :path',{'path':'a/sub/path/'})
 
             WARNING: Do not do ('size >= ?',0) since that will then include the non-deleted
                      version. It is better to filter it later.
+
+        query_prefix: Prefix to be used for all query parameters. Can be useful if building
+                 subqueries
+
+        Returns:
+        --------
+        query : Text of the query
+        params: Dictionary of the parameter substitutions
+
         """
+        qp = query_prefix
+
+        conditions = conditions or []
+        if "*" not in groupselect:
+            raise ValueError("groupselect must have '*'")
+
+        query = []
+        params = {}
+
         if export:
             remove_delete = delete_only = False
 
         # Build the snapshot. Note that the select is never *user*
-        # specified so there isn't an SQL injection risk
-        query = [
-            "SELECT",
-            # Below we make these all a subqury when using these flags so they don't need
-            # to be set here. since we will need them
-            f"{select if not (remove_delete or delete_only) else '*'}",
-            "FROM items",
-        ]
+        # specified so there isn't an SQL injection risk.
 
-        qvals = []
-        conditions = conditions or []
+        # Always build as a nested query even if not needed. The query optimizer
+        # should flatten it. This makes the dynamic construction much easier.
+        # From ChatGPT:
+        #    While the performance impact of using SELECT * FROM (SELECT * FROM items)
+        #    is generally negligible in SQLite due to query optimization, it's a good
+        #    practice to avoid such constructs unless they serve a specific purpose,
+        #    such as when dynamically building complex queries.
+
+        query.extend(
+            [
+                "SELECT",
+                groupselect,
+                "FROM items",
+            ]
+        )
 
         if path:
             path = path.removesuffix("/").removeprefix("./")
-            conditions.append(("apath LIKE ?", f"{path}/%"))
+            conditions.append((f"apath LIKE :{qp}_path", {f"{qp}_path": f"{path}/%"}))
 
         if before:
             b0 = before
@@ -618,7 +652,7 @@ class DFBDST:
                 now=self.config.now.obj,
             )
             logger.debug(f"Interpreted before = {b0} as {before} (s)")
-            conditions.append(("timestamp <= ?", before))
+            conditions.append((f"timestamp <= :{qp}_before", {f"{qp}_before": before}))
 
         if after:
             a0 = after
@@ -629,16 +663,16 @@ class DFBDST:
                 now=self.config.now.obj,
             )
             logger.debug(f"Interpreted after = {a0} as {after} (s)")
-            conditions.append(("timestamp >= ?", after))
+            conditions.append((f"timestamp >= :{qp}_after", {f"{qp}_after": after}))
 
         if conditions:
             query.append("WHERE")
             query.append(" AND ".join(cond[0] for cond in conditions))
-            qvals.extend(cond[1] for cond in conditions)
+            params |= {k: v for c in conditions for k, v in c[1].items()}
 
         if not export:
             query.append("GROUP BY apath HAVING MAX(timestamp)")
-        query.append("ORDER BY LOWER(apath)")
+        # query.append("ORDER BY LOWER(apath)")
 
         query = "\n".join(query)
 
@@ -648,15 +682,27 @@ class DFBDST:
         if delete_only:
             outq_cond.append("size < 0")
 
-        if outq_cond:  # Make all of the above a subquery. Indent for debug readability
-            query = (
-                f"SELECT {select} FROM (\n\n{indent(query,' '*4)}\n\n) WHERE "
-                + " AND ".join(outq_cond)
-            )
+        # Build the nested query even if not needed to capture the different
+        # select and groupselect
+        query = "-- Subquery with everything that is then filtered\n" + query
+        query = f"SELECT {select} FROM (\n{indent(query,' '*4)}\n)"
+        if outq_cond:
+            query += "\nWHERE\n" + " AND ".join(outq_cond)
+
+        return query, params
+
+    def snapshot(self, add_query="", **kwargs):
+        """
+        See _snapshot_query_builder for help. Can specify additional queries but must be
+        in select.
+        """
+        query, params = self._snapshot_query_builder(**kwargs)
+        if add_query:
+            query += "\n" + add_query
 
         db = self.db()
         with db:
-            r = db.execute(query, qvals)
+            r = db.execute(query, params)
         return r
 
     def ls(
@@ -705,47 +751,67 @@ class DFBDST:
         Some of this very clever SQL came from my reddit post here:
         https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
         """
+        subdir = subdir.removeprefix("./").removesuffix("/")
+        db = self.db()
 
-        # While less efficient than a single query, this works by finding the sub-items
-        # and then doing additional queries on them
+        # This method makes essentially two queries that look a lot like snapshots
+        #     1. Snapshot like query that then filters using the above-noted clever SQL
+        #        to filter subdirs. (The old version of this did something similar w/o
+        #        filters for the latest then checked each dir. This is more efficient)
+        #
+        #     2. Files: Add conditions to apath to make sure it only lists in that
+        #        parent directory
 
         conditions = conditions or []
 
-        ###########################################################
-        # All immediate files and directories (though I only need
-        # directories and do files down below. I may remove that
-        # from here if I can)
-        # Again, See: https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
-        query = []
-        qvals = []
+        ## Directories.
 
-        subdir = subdir.removeprefix("./").removesuffix("/")
+        # Use the snapshot query builde with all of the conditions to make a query with
+        # all valid files. Then use the fancy SQL to down-select directories. If it is a
+        # subdir, it needs an additional filter to remove the subdir from the apath names.
+        # The "QQQQ" sub is purely cosmetic to get the indents of the subquery *after* the
+        # dedents of the outer query
+        dir_query, dir_params = self._snapshot_query_builder(
+            path=subdir,
+            before=before,
+            after=after,
+            select="apath",
+            remove_delete=remove_delete,
+            delete_only=delete_only,
+            conditions=conditions,
+        )
+
+        params = dir_params.copy()
         if subdir:
-            query.append(
+            query = dedent(
                 f"""
-                WITH subpaths AS (
-                    SELECT SUBSTR(apath, {len(subdir) + 2}) AS path
-                    FROM items
-                    WHERE apath LIKE ?
-                )
-
-                SELECT DISTINCT 
-                    SUBSTR(
-                        path,
-                        1,
-                        CASE INSTR(path, '/')
-                            WHEN 0
-                            THEN LENGTH(path)
-                            ELSE INSTR(path, '/')
-                        END
-                    ) AS sub
-                FROM subpaths"""
-            )
-            qvals.append(f"{subdir}/%")
-        else:
-            query.append(
+                WITH
+                    snappaths AS (
+                    QQQQ
+                    ),
+                    subpaths AS (
+                        SELECT SUBSTR(snappaths.apath, {len(subdir) + 2}) AS apath
+                        FROM snappaths
+                        WHERE snappaths.apath LIKE :subdir
+                    )
+                    
                 """
-                SELECT DISTINCT 
+            ).replace("QQQQ", indent(dir_query, " " * 8))
+            params["subdir"] = f"{subdir}/%"
+        else:
+            query = dedent(
+                f"""
+                WITH
+                    subpaths AS (
+                    QQQQ
+                    )"""
+            ).replace("QQQQ", indent(dir_query, " " * 8))
+
+        query += dedent(
+            """
+            -- Get just the next path element
+            -- https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
+            SELECT DISTINCT 
                     SUBSTR(
                         apath,
                         1,
@@ -755,117 +821,44 @@ class DFBDST:
                             ELSE INSTR(apath, '/')
                         END
                     ) AS sub
-                FROM items"""
-            )
-
-        db = self.db()
-        diritems = db.execute("\n".join(query), qvals)
-        apaths = (os.path.join(subdir, row["sub"]) for row in diritems)
-        ###########################################################
-
-        if before:
-            b0 = before
-            before = timestamp_parser(
-                before, aware=True, epoch=True, now=self.config.now.obj
-            )
-            logger.debug(f"Interpreted before = {b0} as {before} (s)")
-            conditions.append(("timestamp <= ?", before))
-
-        if after:
-            a0 = after
-            after = timestamp_parser(
-                after, aware=True, epoch=True, now=self.config.now.obj
-            )
-            logger.debug(f"Interpreted after = {a0} as {after} (s)")
-            conditions.append(("timestamp >= ?", after))
-
-        conditions0 = conditions.copy()
-
-        # The above does give files and directories but we really only
-        # care about directories for now
-
-        directories = []
-        for apath in apaths:
-            is_dir = apath.endswith("/")
-            if not is_dir:
-                continue
-            # We need to make sure there is at least one file under
-            # the directory that meets conditions (before,after,
-            # optionally deleted) since they could be there
-            # outside of those
-            conditions = conditions0.copy()
-            qvals = []
-
-            conditions.append(["apath LIKE ?", f"{apath.removesuffix('/')}/%"])
-
-            # We just need to find any file in the subdir. Inner query for groups
-            inq = ["SELECT size FROM items"]
-            inq.append("WHERE")
-            inq.append(" AND ".join(cond[0] for cond in conditions))
-            inq.append("GROUP BY apath HAVING MAX(timestamp)")
-            inq = "\n".join(inq)
-
-            outq = [f"SELECT * FROM ({inq})"]
-
-            outq_cond = []
-            if remove_delete:
-                outq_cond.append("size >= 0")
-            if delete_only:
-                outq_cond.append("size < 0")
-            if outq_cond:
-                outq.extend(["WHERE", " AND ".join(outq_cond)])
-
-            outq.append("LIMIT 1")  # Just one
-
-            qvals.extend(cond[1] for cond in conditions)
-            if db.execute("\n".join(outq), qvals).fetchone():
-                directories.append(apath)
-
-        ## Do files
-        conditions = conditions0.copy()
-        conditions.append(["apath LIKE ?", os.path.join(subdir, "%")])
-        conditions.append(["apath NOT LIKE ?", os.path.join(subdir, "%", "%")])
-
-        # Use * then let SQL downselect before return
-        query = [
+            FROM subpaths
             """
-            SELECT
-                *, 
-                COUNT(*) AS versions,
-                SUM(
-                    CASE  
-                        WHEN size > 0 THEN size 
-                        ELSE 0
-                    END
-                ) as tot_size -- Need to account for -1 vals
-            FROM items
-            """
-        ]
-        qvals = []
+        )
+        apaths = (r["sub"] for r in db.execute(query, params))
+        apaths = (apath for apath in apaths if apath.endswith("/"))
+        directories = [os.path.join(subdir, apath) for apath in apaths]
 
-        query.append("WHERE")
-        query.append(" AND ".join(cond[0] for cond in conditions))
-        query.append("GROUP BY apath HAVING MAX(timestamp)")
-        query.append("ORDER BY LOWER(apath)")
-
-        qvals.extend(cond[1] for cond in conditions)
-
-        qtxt = f"""
-            SELECT {select} FROM (
-                **sub**
-            )""".replace(
-            "**sub**", "\n".join(query)
+        ## Files
+        fcond = conditions.copy()
+        fcond.append(
+            ["apath NOT LIKE :onedepth", {"onedepth": os.path.join(subdir, "%", "%")}]
         )
 
-        outq_cond = []
-        if remove_delete:
-            outq_cond.append("size >= 0")
-        if delete_only:
-            outq_cond.append("size < 0")
-        if outq_cond:
-            qtxt += " WHERE " + " AND ".join(outq_cond)
+        groupselect = dedent(
+            """
+            *, 
+            COUNT(*) AS versions,
+            SUM(
+                CASE  
+                    WHEN size > 0 THEN size 
+                    ELSE 0
+                END
+            ) as tot_size -- Need to account for -1 vals
+            """
+        )
 
-        files = [DFBDST.fullrow2dict(row) for row in db.execute(qtxt, qvals)]
+        fquery, fparams = self._snapshot_query_builder(
+            path=subdir,
+            before=before,
+            after=after,
+            select="*",
+            groupselect=groupselect,
+            remove_delete=remove_delete,
+            delete_only=delete_only,
+            conditions=fcond,
+        )
+
+        files = [DFBDST.fullrow2dict(r) for r in db.execute(fquery, fparams)]
 
         return directories, files
 
@@ -1014,7 +1007,6 @@ def rpath2apath(rpath):
 
     Can handle misplaced tags too
 
-
     Returns apath, timestamp, flag
     """
     parent, name = os.path.split(rpath)
@@ -1026,7 +1018,7 @@ def rpath2apath(rpath):
         stem, ext = os.path.splitext(name)
         ts, flag = parse_dateflag(ext[1:])
         stem, ext = os.path.splitext(stem)  # Split the rest
-    except ValueError:
+    except (ValueError, IndexError):
         # we KNOW name doesn't end in the tag and the tag isn't a valid mime-type so
         # it MUST be on the stem
         stem, ext = smart_splitext(name)
@@ -1050,6 +1042,9 @@ def parse_dateflag(ts):
     are fairly forgiving, this one is not! It expects full date and time
     though will allow some modification around that
     """
+    if not ts:
+        raise ValueError()
+
     if ts[-1] in "DR":  # Delete, Reference
         flag = ts[-1]
         ts = ts[:-1]

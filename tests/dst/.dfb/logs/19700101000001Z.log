@@ -1,0 +1,38 @@
+2024-04-28 14:18:25:INFO: DFB (20240317.0)
+2024-04-28 14:18:25:INFO: Now: 1969-12-31T17:00:00-07:00
+2024-04-28 14:18:25:INFO: Backup Timestamp: 19700101000000Z
+2024-04-28 14:18:25:INFO: config path: '/Volumes/RAMdisk/symlinks/config.py'
+2024-04-28 14:18:25:INFO: tmpdir: TEMP
+2024-04-28 14:18:25:INFO: ID: test_symlinks
+2024-04-28 14:18:25:INFO: DFB (20240317.0)
+2024-04-28 14:18:25:INFO: Now: 1969-12-31T17:00:01-07:00
+2024-04-28 14:18:25:INFO: Backup Timestamp: 19700101000001Z
+2024-04-28 14:18:25:INFO: config path: '/Volumes/RAMdisk/symlinks/config.py'
+2024-04-28 14:18:25:INFO: tmpdir: TEMP
+2024-04-28 14:18:25:INFO: ID: test_symlinks
+2024-04-28 14:18:25:INFO: rclone version: 1.66.0
+2024-04-28 14:18:25:INFO: Listing source
+2024-04-28 14:18:25:INFO: Found 7 source Files
+2024-04-28 14:18:25:INFO: Found 0 dest Files
+2024-04-28 14:18:25:INFO: No new *and* deleted files. No rename tracking
+2024-04-28 14:18:25:INFO: New: 7 files (73.00 B)
+2024-04-28 14:18:25:INFO: Modified: 0 files (0.00 B)
+2024-04-28 14:18:25:INFO: Deleted: 0 files (0.00 B)
+2024-04-28 14:18:25:INFO: Moves: 0 files (0.00 B)
+2024-04-28 14:18:25:INFO: Uploading 'file1.txt' to 'file1.19700101000001.txt'
+2024-04-28 14:18:25:INFO: Uploading 'link1.txt.rclonelink' to 'link1.19700101000001.txt.rclonelink'
+2024-04-28 14:18:25:INFO: Uploading 'link2.1.txt.rclonelink' to 'link2.1.19700101000001.txt.rclonelink'
+2024-04-28 14:18:25:INFO: Uploading 'sub/file2.txt' to 'sub/file2.19700101000001.txt'
+2024-04-28 14:18:25:INFO: Uploading 'sub/link2.2.txt.rclonelink' to 'sub/link2.2.19700101000001.txt.rclonelink'
+2024-04-28 14:18:25:INFO: Uploading 'other/backfile1.txt.rclonelink' to 'other/backfile1.19700101000001.txt.rclonelink'
+2024-04-28 14:18:25:INFO: Uploading 'other/backfile2.txt.rclonelink' to 'other/backfile2.19700101000001.txt.rclonelink'
+2024-04-28 14:18:26:INFO: -----
+2024-04-28 14:18:26:INFO: Errors: 0
+2024-04-28 14:18:26:INFO: Current 7 files (73.00 B)
+2024-04-28 14:18:26:INFO: Total 7 files (73.00 B)
+2024-04-28 14:18:26:INFO: New: 7 files (73.00 B)
+2024-04-28 14:18:26:INFO: Modified: 0 files (0.00 B)
+2024-04-28 14:18:26:INFO: Deleted: 0 files (0.00 B)
+2024-04-28 14:18:26:INFO: Moves: 0 files (0.00 B)
+2024-04-28 14:18:26:INFO: Elapsed Time (approx): 0.34s
+2024-04-28 14:18:26:INFO: -----

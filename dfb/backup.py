@@ -760,6 +760,7 @@ class Backup:
             except Exception as e:
                 logger.error(f"Failed: {e}")
 
+
 class StatsThread(Thread):
     def __init__(self, config, N, totsize, *args, **kwargs):
         self.config = config

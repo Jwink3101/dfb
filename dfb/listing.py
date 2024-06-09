@@ -7,6 +7,7 @@ import shutil
 import json
 import operator
 import logging
+from textwrap import dedent
 
 from . import LOCK
 from .dstdb import DFBDST
@@ -28,6 +29,7 @@ def snapshot(config):
         export=args.export,  # below is ignored if export.
         remove_delete=args.deleted == 0,
         delete_only=args.deleted > 1,
+        add_query="ORDER BY LOWER(apath)",
     )
     rows = (dstdb.fullrow2dict(row) for row in rows)
 
@@ -44,6 +46,96 @@ def snapshot(config):
         for row in rows:
             print(json.dumps(row, ensure_ascii=False))
         print("", end="", flush=True)
+
+
+def tree(config):
+    # del -- Handled in snapshot
+    # del del -- Handled in snapshot
+    # depth -- Done with added condition
+
+    args = config.cliconfig
+    dstdb = DFBDST(config)
+    groupselect = dedent(
+        """
+        * 
+        -- LENGTH(apath) - LENGTH(REPLACE(apath, '/', '')) AS depth -- not used
+        """
+    )
+    path = args.path.removesuffix("/").removeprefix("./")
+
+    conditions = []
+    # Depth filtering is not done here because it means that directories aren't listed.
+    # This is much more performant but is less ideal because you won't see subdirs even if
+    # files exist path the depth
+
+    # if args.max_depth > 0:
+    #    d0 = len(path.split("/")) if path else 0
+    #    conditions.append(["depth <= :depth", {"depth": args.max_depth - 1 + d0}])
+
+    rows = dstdb.snapshot(
+        path=path,
+        before=args.before,
+        after=args.after,
+        groupselect=groupselect,
+        conditions=conditions,
+        remove_delete=args.deleted == 0,
+        delete_only=args.deleted > 1,
+        add_query="ORDER BY LOWER(apath)",
+    )
+
+    rows = [dstdb.fullrow2dict(row) for row in rows]
+
+    treedict = {}
+    for row in rows:
+        dpath = os.path.relpath(row["apath"], path).removeprefix("./")
+
+        parts = dpath.split("/")
+        current_node = treedict
+        for part in parts[:-1]:
+            if part not in current_node:
+                current_node[part] = {}
+            current_node = current_node[part]
+
+        # 'row' is a dict so wrap it in a tuple for later type check
+        current_node[parts[-1]] = (row,)
+
+    def _print_tree(treedict, indent="", depth=1):
+        """
+        Print the nested dictionary as a tree structure with line characters.
+        """
+        if args.max_depth > 0 and depth > args.max_depth:
+            return
+
+        # Get the keys of the dictionary
+        items = list(treedict.items())
+
+        # Iterate over each key
+        for i, (key, val) in enumerate(items):
+            # Determine the prefix characters based on the position in the list
+            if i == len(items) - 1:
+                prefix = "└── "
+                next_indent = indent + "    "
+            else:
+                prefix = "├── "
+                next_indent = indent + "│   "
+
+            # Print the current key with the appropriate prefix
+            isdir = isinstance(val, dict)
+            if isdir:
+                rep = f"{key}/"
+            else:
+                row = val[0]  # from the tuple
+                rep = key
+                if row["size"] < 0:
+                    rep = f"{rep} (DEL)"
+            print(indent + prefix + rep, flush=True)
+
+            # If the value associated with the key is a dictionary, recursively print its contents
+            if isdir:
+                _print_tree(val, next_indent, depth=depth + 1)
+
+    print(f"{path}/", flush=True)
+    _print_tree(treedict)
 
 
 def ls(config):

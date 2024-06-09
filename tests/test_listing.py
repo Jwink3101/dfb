@@ -395,9 +395,182 @@ def test_del():
     assert i0.union(i2) == i1
 
 
+def test_tree():
+    test = testutils.Tester(name="tree")
+    test.write_config()
+
+    # Multiple on a level
+    test.write_pre("src/file1.txt", "1")
+    test.write_pre("src/file2.txt", "2")
+    test.write_pre("src/sub1/file3.txt", "3")
+    test.write_pre("src/sub1/file4.txt", "4")
+    test.write_pre("src/sub1/ssub1/file5.txt", "5")
+    test.write_pre("src/sub1/ssub1/file6.txt", "6")
+
+    # single on a level
+    test.write_pre("src/sub2/file7.txt", "7")
+    test.write_pre("src/sub2/ssub2/file8.txt", "8")
+
+    # skip a level
+    test.write_pre("src/sub3/ssub3/file9.txt", "9")
+
+    test.backup(offset=1)
+
+    assert (
+        test.tree().strip()
+        == dedent(
+            """
+        /
+        ├── file1.txt
+        ├── file2.txt
+        ├── sub1/
+        │   ├── file3.txt
+        │   ├── file4.txt
+        │   └── ssub1/
+        │       ├── file5.txt
+        │       └── file6.txt
+        ├── sub2/
+        │   ├── file7.txt
+        │   └── ssub2/
+        │       └── file8.txt
+        └── sub3/
+            └── ssub3/
+                └── file9.txt
+        """
+        ).strip()
+    )
+
+    assert (
+        test.tree("--max-depth", "1").strip()
+        == dedent(
+            """
+        /
+        ├── file1.txt
+        ├── file2.txt
+        ├── sub1/
+        ├── sub2/
+        └── sub3/
+        """
+        ).strip()
+    )
+    assert (
+        test.tree("--max-depth", "2").strip()
+        == dedent(
+            """
+        /
+        ├── file1.txt
+        ├── file2.txt
+        ├── sub1/
+        │   ├── file3.txt
+        │   ├── file4.txt
+        │   └── ssub1/
+        ├── sub2/
+        │   ├── file7.txt
+        │   └── ssub2/
+        └── sub3/
+            └── ssub3/
+        """
+        ).strip()
+    )
+    assert (
+        test.tree("sub1").strip()
+        == dedent(
+            """
+        sub1/
+        ├── file3.txt
+        ├── file4.txt
+        └── ssub1/
+            ├── file5.txt
+            └── file6.txt
+        """
+        ).strip()
+    )
+
+    assert (
+        test.tree("sub1", "--max-depth", "1").strip()
+        == dedent(
+            """
+            sub1/
+            ├── file3.txt
+            ├── file4.txt
+            └── ssub1/
+            """
+        ).strip()
+    )
+
+    os.unlink("src/sub1/ssub1/file5.txt")
+    test.write_post("src/sub3/ssub3/file9.txt", "nine")
+
+    test.backup(offset=3)
+
+    assert (
+        test.tree("--del").strip()
+        == dedent(
+            """
+            /
+            ├── file1.txt
+            ├── file2.txt
+            ├── sub1/
+            │   ├── file3.txt
+            │   ├── file4.txt
+            │   └── ssub1/
+            │       ├── file5.txt (DEL)
+            │       └── file6.txt
+            ├── sub2/
+            │   ├── file7.txt
+            │   └── ssub2/
+            │       └── file8.txt
+            └── sub3/
+                └── ssub3/
+                    └── file9.txt
+            """
+        ).strip()
+    )
+
+    assert (
+        test.tree("--del", "--del").strip()
+        == dedent(
+            """
+            /
+            └── sub1/
+                └── ssub1/
+                    └── file5.txt (DEL)
+            """
+        ).strip()
+    )
+
+    assert (
+        test.tree("--after", "u2").strip()
+        == dedent(
+            """
+            /
+            └── sub3/
+                └── ssub3/
+                    └── file9.txt
+            """
+        ).strip()
+    )
+
+    assert (
+        test.tree("--after", "u2", "--del").strip()
+        == dedent(
+            """
+            /
+            ├── sub1/
+            │   └── ssub1/
+            │       └── file5.txt (DEL)
+            └── sub3/
+                └── ssub3/
+                    └── file9.txt
+        """
+        ).strip()
+    )
+
+
 if __name__ == "__main__":
     test_listing()
     test_del()
+    test_tree()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

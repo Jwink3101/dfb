@@ -141,6 +141,13 @@ class Tester:
         print(out)
         return out
 
+    def tree(self, *cmd, **kw):
+        with Capture() as cap:
+            self.call("tree", *cmd, **kw)
+        out = cap.out
+        print(out)
+        return out
+
     def backup(self, *args, offset=None, allow_error=False):
         backobj = self.call("backup", *args, offset=offset)
         if not backobj and allow_error:

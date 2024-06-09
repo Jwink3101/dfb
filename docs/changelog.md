@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20240608.0
+
+- New command: `tree` to see a list of files backed up in a tree-like fashion
+- Speed improvements to `ls` command by using more advanced dynamic query
+- (Internal): Refactored snapshot commands to pass through a common util to dynamically build the query.
+
 ## 20240531.0
 
 - Will now compress and upload snapshot files from incomplete runs (such as having errored, etc).
