@@ -186,7 +186,7 @@ def test_listing():
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {"sub1/file.txt (DEL)"}
 
-    # I am going to stop checking output since the modtimes will mess it up but this
+    # I am going to stop checking output on all since the modtimes will mess it up but this
     # will test the code path and I have verified it manually
     out = test.ls("-l")
     out = test.ls("-ll")
@@ -194,6 +194,42 @@ def test_listing():
     out = test.ls("-lld", "--timestamp-local", "--human")
 
     out = test.ls("sub1dasdas")
+
+    # Timestamps
+
+    with Capture() as cap:
+        test.call("timestamps")
+    assert [l.strip() for l in cap.out.splitlines()] == [
+        l.strip()
+        for l in """\
+                   Timestamp  Total  Deleted  Moved  Size
+        1970-01-01T00:00:01Z      5        0      0  52
+        1970-01-01T00:00:02Z      4        1      1  7
+        1970-01-01T00:00:03Z      5        2      2  8
+        1970-01-01T00:00:04Z      4        1      2  9
+        """.strip().splitlines()
+    ]
+
+    with Capture() as cap:
+        test.call("timestamps", "sub4")
+    assert [l.strip() for l in cap.out.splitlines()] == [
+        l.strip()
+        for l in """\
+                   Timestamp  Total  Deleted  Moved  Size
+        1970-01-01T00:00:04Z      1        0      1  0
+        """.strip().splitlines()
+    ]
+
+    with Capture() as cap:
+        test.call("timestamps", "sub2")
+    assert [l.strip() for l in cap.out.splitlines()] == [
+        l.strip()
+        for l in """\
+                     Timestamp  Total  Deleted  Moved  Size
+          1970-01-01T00:00:02Z      1        0      1  0
+          1970-01-01T00:00:03Z      1        1      1  0
+        """.strip().splitlines()
+    ]
 
     test.call("timestamps", "--human")
 

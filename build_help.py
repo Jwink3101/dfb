@@ -23,10 +23,12 @@ ls
 snapshot
 tree
 versions
+timestamps
 prune
 advanced
 advanced dbimport
-advanced prune-file"""
+advanced prune-file
+"""
 
 commands = [l.strip() for l in commands.split("\n") if l.strip()]
 commands.insert(0, None)
@@ -34,6 +36,19 @@ commands.insert(0, None)
 helpmd = [
     "# CLI Help",
 ]
+
+ver = (
+    subprocess.check_output([sys.executable, "dfb.py", "version"], env=env)
+    .strip()
+    .decode()
+)
+pyver = subprocess.check_output([sys.executable, "--version"], env=env).strip().decode()
+helpmd.append(
+    f"""
+version: `{ver}`  
+Python: `{pyver}`
+"""
+)
 
 for command in commands:
     command = command or ""  # sill Falsy but can be used later to extend

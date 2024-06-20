@@ -405,7 +405,7 @@ def parse(argv=None, shebanged=False):
         action="store_true",
         help="""
             Specify timestamps in local time instead of UTC/Z (default). 
-            Note, if applicable, all ModTimes are local""",
+            Note, if applicable, all ModTimes are always local regardless""",
     )
 
     ls = subparsers["ls"] = subpar.add_parser(
@@ -532,6 +532,16 @@ def parse(argv=None, shebanged=False):
             List all timestamps in the backup. Note that this will include
             ones that were nominally pruned but without all files""",
     )
+    timestamps.add_argument(
+        "path",
+        default="",
+        nargs="?",
+        help="""
+            Starting path. Defaults to the top. Specifying a path will also change the 
+            stats to _only_ consider that path
+            """,
+    )
+    # timestamps.add_argument('path')
     #################################################
     ## Pruning
     #################################################

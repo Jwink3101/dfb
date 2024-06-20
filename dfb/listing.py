@@ -17,6 +17,8 @@ from .rclonerc import rcpathjoin
 
 logger = logging.getLogger(__name__)
 
+STRFTIME_FMT = "%Y-%m-%dT%H:%M:%S"
+
 
 def snapshot(config):
     args = config.cliconfig
@@ -172,15 +174,15 @@ def ls(config):
             mtime = (
                 timestamp_parser(mtime, aware=True)
                 .astimezone()
-                .strftime("%Y-%m-%d %H:%M:%S")
+                .strftime(f"{STRFTIME_FMT}")
             )
 
         ts = item["timestamp"]
         ts = timestamp_parser(ts)
         if args.timestamp_local:
-            ts = ts.astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+            ts = ts.astimezone().strftime(f"{STRFTIME_FMT}%z")
         else:
-            ts = ts.strftime("%Y-%m-%d %H:%M:%SZ")
+            ts = ts.strftime(f"{STRFTIME_FMT}Z")
         path = item["apath"]
         path = path if args.full_path else os.path.relpath(path, args.path)
 
@@ -251,16 +253,16 @@ def file_versions(config):
             mtime = (
                 timestamp_parser(mtime, aware=True)
                 .astimezone()
-                .strftime("%Y-%m-%d %H:%M:%S")
+                .strftime(f"{STRFTIME_FMT}")
             )
         row.append(mtime)
 
         ts = item["timestamp"]
         ts = timestamp_parser(ts)
         if args.timestamp_local:
-            ts = ts.astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+            ts = ts.astimezone().strftime(f"{STRFTIME_FMT}%z")
         else:
-            ts = ts.strftime("%Y-%m-%d %H:%M:%SZ")
+            ts = ts.strftime(f"{STRFTIME_FMT}Z")
         row.append(ts)
 
         if args.real_path >= 2:
@@ -296,9 +298,18 @@ def timestamps(config):
     dstdb = DFBDST(config)
 
     db = dstdb.db()
+
+    if path := config.cliconfig.path:
+        path = path.removesuffix("/").removeprefix("./")
+        cond_sql = "WHERE items.apath LIKE :path"
+        cond_dict = {"path": f"{path}/%"}
+    else:
+        cond_sql = ""
+        cond_dict = {}
+
     # See https://stackoverflow.com/a/31704068/3633154 for the CASE WHEN ...
-    snapshots = db.execute(
-        """
+    ts_query = db.execute(
+        f"""
         SELECT 
             timestamp,
             COUNT(timestamp) AS num_total,
@@ -309,22 +320,24 @@ def timestamps(config):
                      ELSE 0 
                      END) AS size
         FROM items 
+        {cond_sql}
         GROUP BY timestamp
-        ORDER BY timestamp"""
+        ORDER BY timestamp""",
+        cond_dict,
     )
 
     table = []
     if args.header:
         table.append(["Timestamp", "Total", "Deleted", "Moved", "Size"])
 
-    for item in snapshots:
+    for item in ts_query:
         timestamp = item["timestamp"]
         ts = timestamp_parser(timestamp, aware=True)
 
         if args.timestamp_local:
-            ts = ts.astimezone().strftime("%Y-%m-%d %H:%M:%S%z")
+            ts = ts.astimezone().strftime(f"{STRFTIME_FMT}%z")
         else:
-            ts = ts.strftime("%Y-%m-%d %H:%M:%SZ")
+            ts = ts.strftime(f"{STRFTIME_FMT}Z")
 
         row = [ts]
         row.extend(item[k] for k in ["num_total", "num_del", "num_mv"])

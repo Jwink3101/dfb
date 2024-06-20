@@ -1,5 +1,10 @@
 # CLI Help
 
+
+version: `dfb-20240620.0`  
+Python: `Python 3.11.5`
+
+
 # No Command
 
 
@@ -426,7 +431,7 @@ Listing Settings:
   --tail N              Include --head (if set) plus the last N lines.
   --human               Use human readable sizes
   --timestamp-local     Specify timestamps in local time instead of UTC/Z (default).
-                        Note, if applicable, all ModTimes are local
+                        Note, if applicable, all ModTimes are always local regardless
 
 ```
 
@@ -616,11 +621,63 @@ Listing Settings:
   --tail N              Include --head (if set) plus the last N lines.
   --human               Use human readable sizes
   --timestamp-local     Specify timestamps in local time instead of UTC/Z (default).
-                        Note, if applicable, all ModTimes are local
+                        Note, if applicable, all ModTimes are always local regardless
 
 Fields are [reference_count],size,mtime,timestamp,[real-path]. mtime is local and
 snapshot will depend on setting. Size will be "D" for deleted items and *end* in "R"
 for a reference file
+
+```
+
+# timestamps
+
+
+```text
+usage: dfb timestamps [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                      [-o 'OPTION = VALUE'] [--header | --no-header] [--head N]
+                      [--tail N] [--human] [--timestamp-local]
+                      [path]
+
+positional arguments:
+  path                  Starting path. Defaults to the top. Specifying a path will
+                        also change the stats to _only_ consider that path
+
+options:
+  -h, --help            show this help message and exit
+
+Global Settings:
+  Default verbosity is 1 for backup/restore/prune and 0 for listing
+
+  -v, --verbose, --debug
+                        +1 verbosity
+  -q, --quiet           -1 verbosity
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+
+Config & Cache Settings:
+  --config file         (Required) Specify config file. Can also be specified via the
+                        $DFB_CONFIG_FILE environment variable or is implied if
+                        executing the config file itself. $DFB_CONFIG_FILE is
+                        currently not set.
+  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be proper
+                        Python (e.g. quoted strings). Example: --override "compare =
+                        'mtime'". Override text is evaluated before *and* after the
+                        config file however, the variables 'pre' and 'post' are
+                        defined as True or False if it is before or after the config
+                        file. These can be used with conditionals to control
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
+
+Listing Settings:
+  --header, --no-header
+                        Print a header where applicable. Default: True
+  --head N              Include the first N lines plus --tail (if set).
+  --tail N              Include --head (if set) plus the last N lines.
+  --human               Use human readable sizes
+  --timestamp-local     Specify timestamps in local time instead of UTC/Z (default).
+                        Note, if applicable, all ModTimes are always local regardless
 
 ```
 

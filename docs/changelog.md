@@ -2,6 +2,16 @@
 
 (newest on top)
 
+## 20240620.0
+
+All minor
+
+- Adds a `path` parameter for timestamps
+- Changed timeformat in listing commands to have a "T" instead of " " between date and time.
+- Fixed missing `timestamps` command in docs
+
+Also tests with rclone 1.67
+
 ## 20240608.0
 
 - New command: `tree` to see a list of files backed up in a tree-like fashion
