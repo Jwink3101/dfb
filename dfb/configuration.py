@@ -551,6 +551,10 @@ config_id = f"{src}-{dst}"
 # `<rclone cache dir>/DFB/<config_id>.db`.
 dbcache_dir = None
 
+# If True, dfb will add an empty directory marker file, ".dfbempty", for empty 
+# directories. These markers will be present in a restore but can later be deleted
+empty_directory_markers = False
+
 ##############################################
 ##             Disable Features             ##
 ##     Use --override to undo. Example:     ##

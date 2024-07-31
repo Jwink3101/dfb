@@ -1304,6 +1304,83 @@ def test_push_snapshots():
     assert gz.open(str(qfile), "rt").read() == "this is a dummy file", "not compressed"
 
 
+def test_empty_dirs():
+    test = testutils.Tester(name="empty_dirs")
+
+    test.config["filter_flags"] = ["--filter", "- *.exc"]
+    test.config["empty_directory_markers"] = True
+
+    test.write_config()
+
+    os.makedirs("src/empty")
+    os.makedirs("src/hassub/subdir/")
+
+    test.backup("-v", offset=1)
+
+    assert os.path.exists("dst/empty/.dfbempty.19700101000001")
+    assert os.path.exists("dst/hassub/subdir/.dfbempty.19700101000001")
+
+    shutil.move("src/hassub/subdir/", "src/hassub/subdir_moved")
+    test.write_pre("src/empty/file.txt", "file")
+
+    test.backup("-v", offset=3)
+
+    # Test both now and past
+    assert test.tree("--at", "u2") == dedent(
+        """\
+        /
+        ├── empty/
+        │   └── .dfbempty
+        └── hassub/
+            └── subdir/
+                └── .dfbempty
+        """
+    )
+    assert test.tree() == dedent(
+        """\
+        /
+        ├── empty/
+        │   └── file.txt
+        └── hassub/
+            └── subdir_moved/
+                └── .dfbempty
+        """
+    )
+
+    files = (os.path.relpath(f, "dst") for f in testutils.tree("dst", hidden=True))
+    files = {f for f in files if not f.startswith(".dfb/")}
+
+    assert {
+        "empty/.dfbempty.19700101000001",
+        "empty/.dfbempty.19700101000003D",
+        "empty/file.19700101000003.txt",
+        "hassub/subdir/.dfbempty.19700101000001",
+        "hassub/subdir/.dfbempty.19700101000003D",
+        "hassub/subdir_moved/.dfbempty.19700101000003",
+    } == files
+
+    # Now the empty dir markers shoudl go away when not tracking
+    test.backup("-v", "--override", "empty_directory_markers = False", offset=5)
+    assert os.path.exists("dst/hassub/subdir_moved/.dfbempty.19700101000005D")
+
+    # and back
+    res = test.backup("-v", offset=7)
+    assert os.path.exists("dst/hassub/subdir_moved/.dfbempty.19700101000007")
+
+    # restores
+    test.call("restore", "restore_curr")
+    assert {
+        "restore_curr/empty/file.txt",
+        "restore_curr/hassub/subdir_moved/.dfbempty",
+    } == set(testutils.tree("restore_curr/", hidden=True))
+
+    test.call("restore", "restore2", "--before", "u2")
+    assert {
+        "restore2/empty/.dfbempty",
+        "restore2/hassub/subdir/.dfbempty",
+    } == set(testutils.tree("restore2/", hidden=True))
+
+
 if __name__ == "__main__":
     test_main("reference")
     #     test_main("copy")
@@ -1329,6 +1406,7 @@ if __name__ == "__main__":
     #     test_auto()
     #     test_min_size()
     #     test_push_snapshots()
+    #     test_empty_dirs()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

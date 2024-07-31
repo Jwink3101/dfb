@@ -4,3 +4,4 @@ dfb.egg-info/
 build/
 *.db
 tests/testdirs
+.dfb/**

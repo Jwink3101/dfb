@@ -41,6 +41,26 @@ This means to transfer (i.e. `copyto`) `src:<apath>` to `dst:<rpath>` or in this
 
 Sometimes this could also have `isref` as False.
 
+### Directory Marker
+
+An empty directory marker has the same format
+```json
+{
+  "apath": "my_empty_dir/.dfbempty",
+  "mtime": -12345,
+  "size": 0,
+  "rpath": "my_empty_dir/.dfbempty.19700101000001",
+  "timestamp": 1,
+  "dstinfo": false
+}
+```
+but has an `apath` with the filename `.dfbempty`. It also has an `mtime` of `-12345` but that is inconsequential.
+
+While the format is the same and will result in the same *destination* file (`my_empty_dir/.dfbempty.19700101000001`), the filename of `.dfbempty` tells dfb to create an empty file with that `rpath` rather than copying it (since that file, presumably, does not exists in the source).
+
+Note that these markers can be deleted all the same without any special handling.
+ 
+
 ## Move by reference
 
 Moves also introduce a delete

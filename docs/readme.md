@@ -8,4 +8,5 @@
 - [Using dfb with cold storage](cold_storage.md)
 - [Compare Setting Guidance](compare_settings.md)
 - ["FAQs"](FAQs.md)
+- [Mount (EXPERIMENTAL)](mount.md)
 - [Symlink Update](symlink_update.md)

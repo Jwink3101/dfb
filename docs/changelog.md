@@ -2,6 +2,11 @@
 
 (newest on top)
 
+## 20240731.0
+
+- Adds the ability to create empty directory markers at the destination. "Phantom" markers (`.dfbempty`) are created in the source listing with empty directories and then these are treated (and restored) like regular files. They can be deleted from the restore as a second action.
+    - Tests for empty directories
+
 ## 20240620.0
 
 All minor

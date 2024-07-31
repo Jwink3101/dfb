@@ -38,6 +38,12 @@ The reason we do not *just* use snapshots is that it is that they should be trea
 
 With that said, you can use `dfb advanced dbimport` to *just* import from data.
 
+## When I restore, I get extra `.dfbempty` files
+
+The way dfb handles empty directories if enabled (disabled by default) is to create directory markers at the destination. Essentially, these are phantom source files in empty directories. Restore does *not* handle these differently (i.e. using mkdir and not copying). To delete them after a restore, simply run:
+
+    $ rclone delete -v --include ".dfbempty" remote:
+
 ## Why not use the date in the root folder?
 
 Rather than `path/to/file.<date>.ext`, dfb could have done `<date>path/to/file.ext`. I strongly considered that and it would have made some things easier but the problem is that (a) interrogating the backup manually would have been *much* harder and walking the file system could have been much more expensive!
@@ -47,6 +53,8 @@ Rather than `path/to/file.<date>.ext`, dfb could have done `<date>path/to/file.e
 Yep. Certainly possible and that is a tradeoff. One way to deal with it is to split is manually and use [rclone union](https://rclone.org/union/) to join them. While some remotes get uncomfortable with too many files, rclone can handle it just fine.
 
 It also would make it harder to manually inspect the backed up files and compare.
+
+The destination can get messy, especially if many files and directories are moved. But it is still easily parsed manually or programmatically.
 
 ## What happens if a transfer is interrupted.
 

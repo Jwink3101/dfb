@@ -42,6 +42,8 @@ When files are backed up, they are renamed to have the date of the backup in the
 
 where the time is **_always_ in UTC (Z) time**. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is marked with a tiny file with `D`. If a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
 
+There may also be empty directory markers named `.dfbempty.<date>` which are to hold the empty directory on the destination.
+
 Directory names are unchanged.
 
 ### Reference Files
@@ -158,26 +160,9 @@ You can, of course, do it all manually but (a) it won't check/delete references 
 - [Using dfb with cold storage](docs/cold_storage.md)
 - [Compare Setting Guidance](docs/compare_settings.md)
 - ["FAQs"](docs/FAQs.md)
+- [Mount (EXPERIMENTAL)](docs/mount.md)
 - [Symlink Update](docs/symlink_update.md)
 <!--- END AUTO GENERATED -->
-
-## Mount (EXPERIMENTAL)
-
-In its own package is `dfb-mount` installed along with `dfb`. This is **EXPERIMENTAL** at best. It overlays *an rclone mount* and presents the latest (or set) version of the files.
-
-Some notes:
-
-- It does not serve files directly. It overlays an rclone mount. Use `rclone mount --vfs-cache-mode full` for best effect (especially since it will read the remote a lot). Rclone is way better suited for serving the files
-- It is **stateless** (except for an optional cache). It doesn't use the remote database and need-not point to a single backup. You can mount many backups (or the top level of one with many backup destinations) and it'll work just fine. If it can't parse a date, it just provides the file and doesn't do any grouping.
-- Unless using the `--remove-empty-dirs`, empty directories, such as from deleted files, will be shown. Determining if a directory is empty requires walking until it either finds a file or all the way until it doesn't. It is suggested to use the cache with this. You can always use a short cache duration.
-- Logging is incomplete. I still need to fix this
-- Does not resolve symlink files.
-- Just to repeat, **THIS IS EXPERIMENTAL**. 
-- Does **not work with libfuse3**. Use libfuse2:
-    ```
-    $ sudo apt-get update -y
-    $ sudo apt-get install -y libfuse2
-    ```
 
 ## Known Issues
 

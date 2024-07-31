@@ -84,8 +84,6 @@ class RC:
         self.user = randstr()
         self.password = randstr()
 
-        logger.debug(f"http://{self.user}:{self.password}@{self.addr}")
-
         self._started = False
         self._exit = False
 
@@ -109,6 +107,9 @@ class RC:
 
         if self._started:
             return self
+
+        logger.debug("Starting rclone rc server")
+        logger.debug(f"http://{self.user}:{self.password}@{self.addr}")
 
         cmd = [self.rclone_exe, "rcd"] + self.serve_flags
         cmd.append("--rc-serve")  # For reading remote content
@@ -167,6 +168,7 @@ class RC:
             raise ValueError("Failed to start server")
 
     def stop(self):
+        logger.debug("stopping rclone rc server")
         if not self._started:
             return
         self._exit = True
@@ -611,7 +613,7 @@ class RC:
         )
         res = resp.json()
 
-        # THis is developer-level debug. Comment out for now
+        # This is developer-level debug. Comment out for now
         # logger.debug(f"call {res = }")
 
         if res.get("error", ""):

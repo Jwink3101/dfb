@@ -38,6 +38,8 @@ from . import _FAIL
 
 logger = logging.getLogger(__name__)
 
+DFB_EMPTY = ".dfbempty"
+
 
 class NoCommonHashError(ValueError):
     pass
@@ -199,16 +201,26 @@ class Backup:
             mimetype=False,
             modtime=modtime,
             metadata=config.metadata,
-            only="files",
+            # only="files",
             epoch_time=True,
             flags=flags + hash_flags,
             subdir=subdir,
         )
 
         files = []
+        dirs = set()
+        parents = set()
+
         t0 = time.time()
         c = 0
-        for file in rcfiles:
+        for item in rcfiles:
+            if item["IsDir"]:
+                dirs.add(item["Path"])
+                parents.add(os.path.dirname(item["Path"]))  # could be nested subdir
+                continue
+            else:
+                file = item
+
             c += 1
             new = {
                 "apath": os.path.join(subdir, file.pop("Path")),
@@ -225,6 +237,8 @@ class Backup:
                 new[k] = v
 
             files.append(new)
+            parents.add(os.path.dirname(new["apath"]))
+
             if stats and (time.time() - t0) >= stats:  # TODO TEST
                 logger.info(f"Source Listing Status: {c} items")
                 t0 = time.time()
@@ -234,6 +248,16 @@ class Backup:
             for file in files:
                 file.pop("checksum", None)
         # end testing
+
+        empty = dirs - parents
+        if config.empty_directory_markers:
+            for edir in empty:
+                new = {
+                    "apath": os.path.join(edir, DFB_EMPTY),
+                    "mtime": -12345,
+                    "size": 0,
+                }
+                files.append(new)
 
         logger.debug(f"Listed {len(files)} files")
         return files
@@ -253,7 +277,12 @@ class Backup:
                 self.new.append(apath)
                 continue
 
-            if not self.file_compare(sfile, dfile):
+            if os.path.basename(apath) == DFB_EMPTY:
+                compare = True  # Always compare empties to true regardless of attribs
+            else:
+                compare = self.file_compare(sfile, dfile)
+
+            if not compare:
                 self.modified.append(apath)
                 continue
 
@@ -356,6 +385,9 @@ class Backup:
             del_by_size[dfile["size"]].append(dfile)
 
         for apath in self.new:
+            if os.path.basename(apath) == DFB_EMPTY:
+                continue
+
             sfile = self.src_files[apath]
 
             if (
@@ -435,6 +467,11 @@ class Backup:
             try:
                 sfile = self.config.src, file["apath"]
                 dfile = self.config.dst, file["rpath"]
+
+                if os.path.basename(file["apath"]) == DFB_EMPTY:
+                    rc.write(dfile, b"")  # Empty file. mtime doesn't matter
+                    logger.info(f"Uploading empty dir marker {file['rpath']!r}")
+                    return file
 
                 msg = f"Uploading {file['apath']!r} to {file['rpath']!r}"
                 logger.info(msg)
@@ -787,6 +824,8 @@ class StatsThread(Thread):
     __iadd__ = increment  # += n
 
     def run(self):
+        inf = float("inf")
+
         totnum, totunits = human_readable_bytes(self.totsize)
 
         self.config.rc.call("core/stats-reset")
@@ -802,12 +841,12 @@ class StatsThread(Thread):
             stats = self.config.rc.call("core/stats")
             msg = [f"STATS:"]
 
-            dt = time_format(stats["elapsedTime"])
+            dt = time_format(stats.get("elapsedTime", inf))
             msg.append(f"{dt:5s};")
 
             msg.append(f"xfer {len(stats.get('transferring',''))};")
 
-            bytesnum, bytesunits = human_readable_bytes(stats["bytes"])
+            bytesnum, bytesunits = human_readable_bytes(stats.get("bytes", 0))
             msg.append(
                 f"{self.fcount}/{self.N} "  # stats['totalTransfers'] includes active so use self.fcount
                 f"({bytesnum:6.2f} {bytesunits} / {totnum:<6.2f} {totunits});"
@@ -815,17 +854,17 @@ class StatsThread(Thread):
 
             # use these since they are weighted averages but need to account for each
             # transfer
-            speed = sum(i["speedAvg"] for i in stats["transferring"])
+            speed = sum(i.get("speedAvg", 0) for i in stats.get("transferring", []))
             # This is a heuristic approach. Prefer the weighted avg speed but
             # it can drop to zero. This doesn't have to be perfect.
-            rel = speed / (stats["speed"] + 1e-5 * (speed + 1))  # [0,inf)
+            rel = speed / (stats.get("speed", 0) + 1e-5 * (speed + 1))  # [0,inf)
             frac = 2 / (1 + math.exp(-10 * rel)) - 1
-            sp = frac * speed + (1 - frac) * stats["speed"]
+            sp = frac * speed + (1 - frac) * stats.get("speed", 0)
 
             speednum, speedunits = human_readable_bytes(sp)
             msg.append(f"{speednum:5.2f} {speedunits}/s;")
 
-            eta = round((self.totsize - stats["bytes"]) / sp)
+            eta = round((self.totsize - stats.get("bytes", 0)) / sp)
             msg.append(f"ETA: {time_format(eta)}")
 
             logger.info(" ".join(msg))
