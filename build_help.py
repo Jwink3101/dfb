@@ -28,6 +28,7 @@ prune
 advanced
 advanced dbimport
 advanced prune-file
+advanced timestamp-include-filters
 """
 
 commands = [l.strip() for l in commands.split("\n") if l.strip()]

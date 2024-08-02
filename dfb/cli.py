@@ -699,6 +699,31 @@ def parse(argv=None, shebanged=False):
         """,
     )
     #################################################
+    ## Advanced timestamp-filters
+    #################################################
+    tsfilt = subparsers["tsfilt"] = adv_subpar.add_parser(
+        "timestamp-include-filters",
+        parents=[global_parent, config_global, when_parent],
+        help="Create rclone --include filters for a time range",
+        description="""
+            Given a range of times specified, create and print rclone 
+            --include filters that can be used for other rclone operations 
+            (e.g. ls, ncdu) on the destination. Note that the filters are not perfect
+            and could possibly include additional items if they happen to have the same
+            timestamp in the name
+            """,
+    )
+
+    tsfilt.add_argument(
+        "path",
+        default="",
+        nargs="?",
+        help="""
+            Starting path. Defaults to the top.
+            """,
+    )
+
+    #################################################
     ## DONE
     #################################################
     args = parser.parse_args(argv)
@@ -891,6 +916,11 @@ def _cli(cliconfig):
             else:
                 prune.byrpaths()
             return prune
+        elif cliconfig.command == "timestamp-include-filters":
+            from .listing import timestamp_include_filters
+
+            timestamp_include_filters(config)
+            return config
         else:
             logger.error(f"Unrecognized command {cliconfig.command!r}")
             return config

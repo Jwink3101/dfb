@@ -1,8 +1,8 @@
 # CLI Help
 
 
-version: `dfb-20240731.0`  
-Python: `Python 3.11.7`
+version: `dfb-20240802.0`  
+Python: `Python 3.11.5`
 
 
 # No Command
@@ -771,15 +771,16 @@ technically could be deleted but it is more efficient not to try to identify the
 usage: dfb advanced [-h] command ...
 
 options:
-  -h, --help  show this help message and exit
+  -h, --help            show this help message and exit
 
 Commands:
   Run `dfb advanced <command> -h` for help
 
   command
-    dbimport  Import an exported list
-    prune-file
-              Prune a specific file (real-path or rpath)
+    dbimport            Import an exported list
+    prune-file          Prune a specific file (real-path or rpath)
+    timestamp-include-filters
+                        Create rclone --include filters for a time range
 
 ```
 
@@ -899,5 +900,74 @@ Execution Settings:
                         is a more advanced form of --dry-run. If FILE ends in '.gz' or
                         '.xz', it will be compressed respectively. Can specify "-" to
                         print the dump to stdout.
+
+```
+
+# advanced timestamp-include-filters
+
+
+```text
+usage: dfb advanced timestamp-include-filters [-h] [-v] [-q] [--temp-dir TEMP_DIR]
+                                              --config file [-o 'OPTION = VALUE']
+                                              [--at TIMESTAMP] [--after TIMESTAMP]
+                                              [--only TIMESTAMP]
+                                              [path]
+
+Given a range of times specified, create and print rclone --include filters that can
+be used for other rclone operations (e.g. ls, ncdu) on the destination. Note that the
+filters are not perfect and could possibly include additional items if they happen to
+have the same timestamp in the name
+
+positional arguments:
+  path                  Starting path. Defaults to the top.
+
+options:
+  -h, --help            show this help message and exit
+
+Global Settings:
+  Default verbosity is 1 for backup/restore/prune and 0 for listing
+
+  -v, --verbose, --debug
+                        +1 verbosity
+  -q, --quiet           -1 verbosity
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+
+Config & Cache Settings:
+  --config file         (Required) Specify config file. Can also be specified via the
+                        $DFB_CONFIG_FILE environment variable or is implied if
+                        executing the config file itself. $DFB_CONFIG_FILE is
+                        currently not set.
+  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be proper
+                        Python (e.g. quoted strings). Example: --override "compare =
+                        'mtime'". Override text is evaluated before *and* after the
+                        config file however, the variables 'pre' and 'post' are
+                        defined as True or False if it is before or after the config
+                        file. These can be used with conditionals to control
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
+
+Time Specification:
+  All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-
+  DD[T]HH:MM:SS) with or without spaces, colons, dashes, "T", etc. Can optionally
+  specify a numeric time zone (e.g. -05:00) or 'Z'. If no timezone is specified, it
+  is assumed *local* time. Alternatively, can specify unix time with a preceding 'u'
+  (e.g. 'u1678560662'). Or can specify a time difference from the current time with
+  any (and only) of the following: second[s], minute[s], hour[s], day[s], week[s].
+  Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
+  also specify "now" for the current time.
+
+  --at TIMESTAMP, --before TIMESTAMP
+                        Timestamp at which to show the files. If not specified, will
+                        be the latest. Note that if '--after' is set, this will not be
+                        the full snapshot in time.
+  --after TIMESTAMP     Only show files after the specified time. Note that this means
+                        the '--at' will not be the full snapshot.
+  --only TIMESTAMP      Only show files AT the specified time. Shortcut for '--before
+                        TIMESTAMP --after TIMESTAMP' since both are inclusive. Useful
+                        if the exact timestamp is known such as from the 'timestamps'
+                        command.
 
 ```

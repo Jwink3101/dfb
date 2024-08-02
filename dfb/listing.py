@@ -7,9 +7,10 @@ import shutil
 import json
 import operator
 import logging
+import shlex
 from textwrap import dedent
 
-from . import LOCK
+from . import LOCK, time2all
 from .dstdb import DFBDST
 from .utils import tabulate, human_readable_bytes, head_tail_table, smart_open
 from .timestamps import timestamp_parser
@@ -359,3 +360,65 @@ def timestamps(config):
     )
 
     print(tabulate(table), flush=True)
+
+
+def timestamp_include_filters(config):
+    args = config.cliconfig
+    dstdb = DFBDST(config)
+    db = dstdb.db()
+
+    before = args.before
+    after = args.after
+    path = args.path
+
+    conditions = []
+
+    if path:
+        path = path.removesuffix("/").removeprefix("./")
+        conditions.append(("items.apath LIKE :path", {"path": f"{path}/%"}))
+
+    if before:
+        b0 = before
+        before = timestamp_parser(
+            before,
+            aware=True,
+            epoch=True,
+            now=config.now.obj,
+        )
+        logger.debug(f"Interpreted before = {b0} as {before} (s)")
+        conditions.append(("timestamp <= :before", {"before": before}))
+
+    if after:
+        a0 = after
+        after = timestamp_parser(
+            after,
+            aware=True,
+            epoch=True,
+            now=config.now.obj,
+        )
+        logger.debug(f"Interpreted after = {a0} as {after} (s)")
+        conditions.append(("timestamp >= :after", {"after": after}))
+
+    cond = ""
+    params = {}
+    if conditions:
+        cond = "WHERE " + " AND ".join(condition[0] for condition in conditions)
+        params |= {k: v for condition in conditions for k, v in condition[1].items()}
+
+    query = f"""
+        SELECT DISTINCT timestamp
+        FROM items
+        {cond}
+        ORDER BY timestamp
+        """
+
+    qres = db.execute(query, params)
+    includes = []
+    for item in qres:
+        timestamp = item["timestamp"]
+        ts = timestamp_parser(timestamp, aware=True)
+        dt = time2all(ts).dt
+
+        includes.extend(["--include", f"*.{dt}*"])  # may or may not have a dot after
+
+    print(shlex.join(includes))

@@ -6,6 +6,7 @@ from pathlib import Path
 import gzip as gz
 import subprocess
 import json
+import shlex
 import shutil
 from textwrap import dedent
 
@@ -329,6 +330,24 @@ def test_listing():
     assert len(cap.out.splitlines()) == 6
     assert "..." not in cap.out
 
+    # timestamp-include-filters
+    cmd = ["advanced", "timestamp-include-filters"]
+    cmd += ["--after", "u2", "--before", "u3"]
+    with Capture() as cap:
+        test.call(*cmd)
+    assert [
+        "--include",
+        "*.19700101000002*",
+        "--include",
+        "*.19700101000003*",
+    ] == shlex.split(cap.out)
+
+    cmd = ["advanced", "timestamp-include-filters"]
+    cmd += ["--after", "u2", "--before", "u3", "sub3"]  # add subdir to test
+    with Capture() as cap:
+        test.call(*cmd)
+    assert ["--include", "*.19700101000003*"] == shlex.split(cap.out)
+
 
 def test_del():
     test = testutils.Tester(name="listing_del")
@@ -605,8 +624,8 @@ def test_tree():
 
 if __name__ == "__main__":
     test_listing()
-    test_del()
-    test_tree()
+    # test_del()
+    # test_tree()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)
