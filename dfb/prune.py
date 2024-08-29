@@ -28,19 +28,22 @@ class Prune:
     def __init__(self, config):
         self.config = config
         self.args = config.cliconfig
+
+        if config.disable_prune and not (self.args.dry_run or self.args.dump):
+            logger.info("Setting --dry-run based on 'disable_prune = True' ")
+            logger.info("Run with `--override 'disable_prune = False'` to override")
+            self.args.dry_run = True
+
         self.dstdb = PruneableDFBDST(config)
 
     def bydate(self):
         config = self.config
         cliconfig = self.args
 
-        if config.disable_prune and not (self.args.dry_run or cliconfig.dump):
-            logger.info("Setting --dry-run based on 'disable_prune = True' ")
-            logger.info("Run with `--override 'disable_prune = False'` to override")
-            self.args.dry_run = True
-
         self.when = when = timestamp_parser(
-            self.args.when, epoch=True, now=self.config.now.obj
+            self.args.when,
+            epoch=True,
+            now=self.config.now.obj,
         )
 
         msg = f"Pruning to {timestamp_parser(self.when,aware=True).isoformat()} "

@@ -1,8 +1,8 @@
 # CLI Help
 
 
-version: `dfb-20240802.0`  
-Python: `Python 3.11.5`
+version: `dfb-20240829.0`  
+Python: `Python 3.11.7`
 
 
 # No Command
@@ -43,8 +43,9 @@ Commands:
                         optionally specified time
     tree                Recursively list files in a tree
     versions            Show all versions of a file.
-    timestamps          List all timestamps in the backup. Note that this will include
-                        ones that were nominally pruned but without all files
+    timestamps          List all timestamps in the backup or within specified range.
+                        Note that this will include ones that were nominally pruned
+                        but without all files
     prune               Prune older versions of the files
     advanced            Advanced Functions. Run `dfb advanced -h` for help
 
@@ -635,7 +636,8 @@ for a reference file
 ```text
 usage: dfb timestamps [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                       [-o 'OPTION = VALUE'] [--header | --no-header] [--head N]
-                      [--tail N] [--human] [--timestamp-local]
+                      [--tail N] [--human] [--timestamp-local] [--at TIMESTAMP]
+                      [--after TIMESTAMP] [--only TIMESTAMP]
                       [path]
 
 positional arguments:
@@ -678,6 +680,27 @@ Listing Settings:
   --human               Use human readable sizes
   --timestamp-local     Specify timestamps in local time instead of UTC/Z (default).
                         Note, if applicable, all ModTimes are always local regardless
+
+Time Specification:
+  All TIMESTAMPs: Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-
+  DD[T]HH:MM:SS) with or without spaces, colons, dashes, "T", etc. Can optionally
+  specify a numeric time zone (e.g. -05:00) or 'Z'. If no timezone is specified, it
+  is assumed *local* time. Alternatively, can specify unix time with a preceding 'u'
+  (e.g. 'u1678560662'). Or can specify a time difference from the current time with
+  any (and only) of the following: second[s], minute[s], hour[s], day[s], week[s].
+  Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
+  also specify "now" for the current time.
+
+  --at TIMESTAMP, --before TIMESTAMP
+                        Timestamp at which to show the files. If not specified, will
+                        be the latest. Note that if '--after' is set, this will not be
+                        the full snapshot in time.
+  --after TIMESTAMP     Only show files after the specified time. Note that this means
+                        the '--at' will not be the full snapshot.
+  --only TIMESTAMP      Only show files AT the specified time. Shortcut for '--before
+                        TIMESTAMP --after TIMESTAMP' since both are inclusive. Useful
+                        if the exact timestamp is known such as from the 'timestamps'
+                        command.
 
 ```
 

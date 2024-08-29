@@ -586,11 +586,11 @@ class RC:
         params["fs"] = fs
         return self.call("operations/fsinfo", params=params)
 
-    def call(self, endpoint, *, postkw=None, params=None):
+    def call(self, endpoint, *, postkw=None, params=None, **paramskwargs):
         self.start()
 
         postkw = postkw or {}
-        params = params or {}
+        params = paramskwargs | (params or {})
 
         logging.debug(f"call: {endpoint = }, {params = }")
 
@@ -599,7 +599,8 @@ class RC:
                 params[key] = json.dumps(val)
 
         # In order to get sending data for rcat (aka write) to work, we use the URL
-        # paramaters and post anything else such as data
+        # paramaters and post anything else as data. This makes the URLs more cumbersome
+        # but in my testing, works better since you can post content.
         url = (
             urllib.parse.urljoin(f"http://{self.addr}", endpoint)
             + "?"
@@ -622,9 +623,11 @@ class RC:
             raise err
         return res
 
-    def call_async_and_background(self, endpoint, postkw=None, params=None):
+    def call_async_and_background(
+        self, endpoint, postkw=None, params=None, **paramskwargs
+    ):
         """Call with async and return jobid"""
-        params = params or {}
+        params = paramskwargs | (params or {})
         params = params.copy()
         params["_async"] = True
         jobid = self.call(endpoint, postkw=postkw, params=params)["jobid"]
@@ -636,12 +639,14 @@ class RC:
         if res.get("finished", False) or res.get("error", ""):
             return res
 
-    def call_async_and_wait(self, endpoint, postkw=None, params=None):
+    def call_async_and_wait(self, endpoint, postkw=None, params=None, **paramskwargs):
         """
         This is basically the same as call() but uses async. Calls and waits
         for return
         """
-        jobid = self.call_async_and_background(endpoint, postkw=postkw, params=params)
+        jobid = self.call_async_and_background(
+            endpoint, postkw=postkw, params=params, **paramskwargs
+        )
         t0 = time.time()
 
         while True:

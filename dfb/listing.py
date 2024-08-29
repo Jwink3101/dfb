@@ -300,13 +300,43 @@ def timestamps(config):
 
     db = dstdb.db()
 
-    if path := config.cliconfig.path:
+    before = args.before
+    after = args.after
+    path = args.path
+
+    cond_dict = {}
+    cond_sqls = []
+
+    if path:
         path = path.removesuffix("/").removeprefix("./")
-        cond_sql = "WHERE items.apath LIKE :path"
+        cond_sqls.append("items.apath LIKE :path")
         cond_dict = {"path": f"{path}/%"}
-    else:
-        cond_sql = ""
-        cond_dict = {}
+
+    if before:
+        b0 = before
+        before = timestamp_parser(
+            before,
+            aware=True,
+            epoch=True,
+            now=config.now.obj,
+        )
+        logger.debug(f"Interpreted before = {b0} as {before} (s)")
+        cond_sqls.append("timestamp <= :before")
+        cond_dict["before"] = before
+
+    if after:
+        a0 = after
+        after = timestamp_parser(
+            after,
+            aware=True,
+            epoch=True,
+            now=config.now.obj,
+        )
+        logger.debug(f"Interpreted after = {a0} as {after} (s)")
+        cond_sqls.append("timestamp >= :after")
+        cond_dict["after"] = after
+
+    cond_sql = "WHERE " + " AND ".join(cond_sqls) if cond_sqls else ""
 
     # See https://stackoverflow.com/a/31704068/3633154 for the CASE WHEN ...
     ts_query = db.execute(

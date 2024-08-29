@@ -721,7 +721,15 @@ class Backup:
         return f"{len(files)} file{s} ({num:0.2f} {units})"
 
     def run_stats(self):
-        stats = [f"Errors: {self.errcount}"]
+        stats = []
+
+        now = self.config.now
+        stats.append(
+            f"Timestamp: {now.dt} "
+            f"({now.obj.astimezone().strftime('%Y-%m-%d %H:%M:%S%z')})"
+        )
+
+        stats.append(f"Errors: {self.errcount}")
         select = """
             SUM(CASE 
                 WHEN (size >= 0 AND (isref IS NULL OR isref = 0) )

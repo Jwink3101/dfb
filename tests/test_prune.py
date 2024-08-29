@@ -406,6 +406,22 @@ def test_disable():
     assert not os.path.exists("dst/to_del.19700101000003D.txt")
     assert not os.path.exists("dst/file.19700101000001.txt")
 
+    # Prune-file
+    test.call("advanced", "prune-file", "file.19700101000003.txt", "--dry-run")
+    assert os.path.exists("dst/file.19700101000003.txt")
+
+    test.call("advanced", "prune-file", "file.19700101000003.txt")
+    assert os.path.exists("dst/file.19700101000003.txt")
+
+    test.call(
+        "advanced",
+        "prune-file",
+        "file.19700101000003.txt",
+        "--override",
+        "disable_prune = False",
+    )
+    assert not os.path.exists("dst/file.19700101000003.txt")
+
 
 def test_basic_versions():
     test = testutils.Tester(name="prune_versions_basic")

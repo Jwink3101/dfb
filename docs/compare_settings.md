@@ -110,3 +110,18 @@ Generally speaking, comparisons and renames are actually source-to-source becaus
 ## Alternative S3 source settings
 
 If your source is S3 and you do not want to work off of "hash" for whatever reason (some non-rclone tools do not set it always) and don't want to fall back to 'size' or the slow 'mtime', one option is to add the flag `--use-server-modtime` and then `'mtime'` for the compare. This will detect changes just fine!
+
+
+## `'auto'` settings
+
+You can also default to the `'auto'` setting for many comparisons. These will essentially use ModTime (i.e. `'mtime'`) if the reported precision is 1 second or less **AND** is not a "SlowModTime" remote (e.g. S3 is 1ns precision but is a SlowModTime remote). Below, when it is stated that a remote supports "ModTime", it includes these *two* conditions.
+
+It does *not* ever suggest using hashes.
+
+
+- `compare`: ModTime if supported on source. Otherwise size
+- `dst_compare`: ModTime if *both* support it. Otherwise size
+- `renames`: ModTime if supported on source otherwise nothing
+- `dst_renames`: ModTime if *both* support it otherwise nothing. If `renames` is size, will also not support it
+- `get_modtime`: Only if the source supports it
+- `get_hashes`: Always False. May change in the future to whether or not the source has "SlowHash" or not but some remotes such as S3 may not be SlowHash but could still need an API call for the hash of certain files. Since there is no way to know, for now, everything is just False.

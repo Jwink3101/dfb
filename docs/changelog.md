@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20240829.0
+
+- Minor: Adds timestamp to stats output
+- Minor: Adds the ability to specify time ranges to the timestamp command
+- Bug Fix: Respect `disable_prune` in `advanced prune-file`. Add test.
+
 ## 20240802.0
 
 - Adds `advanced timestamp-include-filters` command to generate a list of rclone `--include` rules for a given timestamp range. Useful for things like running `ncdu` on the destination. 

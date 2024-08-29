@@ -527,10 +527,11 @@ def parse(argv=None, shebanged=False):
 
     timestamps = subparsers["timestamps"] = subpar.add_parser(
         "timestamps",
-        parents=[global_parent, config_global, list_parent_settings],
+        parents=[global_parent, config_global, list_parent_settings, when_parent],
         help="""
-            List all timestamps in the backup. Note that this will include
-            ones that were nominally pruned but without all files""",
+            List all timestamps in the backup or within specified range. 
+            Note that this will include ones that were nominally pruned but 
+            without all files""",
     )
     timestamps.add_argument(
         "path",

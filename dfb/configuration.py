@@ -125,6 +125,7 @@ class Config:
         except FileNotFoundError:
             raise FileNotFoundError(f"Couldn't find {configpath!r}")
         self.add_params = add_params or {}
+        self.add_params["subdir"] = self.add_params.get("subdir", "")
 
         self.now = nowfun()
 
