@@ -783,6 +783,36 @@ def test_subdirs():
     assert not os.path.exists("dst/sub2")
 
 
+def test_subdir_w_empty():
+    """
+    Regression for non-empty (or maybe even actually empty) subdirs w/o modified
+    files showing as empty
+    """
+    test = testutils.Tester(name="subdir_w_empty")
+
+    test.config["empty_directory_markers"] = True
+    test.write_config()
+
+    test.write_pre("src/file1.txt", "1")
+    test.write_pre("src/sub0/file2.txt", "2")
+    test.write_pre("src/sub0/sub1/file3.txt", "3")
+    test.write_pre("src/sub0/sub2/file4.txt", "4")
+
+    test.backup(offset=1)
+
+    test.write_post("src/sub0/sub2/file4.txt", "four")
+    os.makedirs("src/sub0/sub3")
+
+    test.backup("--subdir", "sub0", offset=3)
+
+    # Make sure the empty dir maker is created even at the subdir
+    assert os.path.exists("dst/sub0/sub3/.dfbempty.19700101000003")
+
+    # this is the regression. Notice these are relative to 'sub0'
+    assert not os.path.exists("dst/" + "sub1/.dfbempty.19700101000003")
+    assert not os.path.exists("dst/" + "sub2/.dfbempty.19700101000003")
+
+
 @pytest.mark.parametrize("mode", ["link", "link-webdav", "copy", "skip"])
 def test_symlinks(mode):
     test = testutils.Tester(name="symlinks", src="srcalias:")
@@ -1393,6 +1423,7 @@ if __name__ == "__main__":
     #     test_missing_ref()
     #     test_override()
     #     test_subdirs()
+    #     test_subdir_w_empty()
     #     test_symlinks("link")
     #     test_symlinks("link-webdav")
     #     test_symlinks('copy')

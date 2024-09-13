@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20240912.0
+
+- Minor: Bug fix with `--subdir` and `empty_directory_markers = True`
+- **NOTE**: There is a bug in rclone 1.68 with symlinks, `--copy-links` and macOS. For now, add `--local-no-clone` to the rclone flags.
+    - [Forum Post](https://forum.rclone.org/t/macos-local-to-local-copy-with-copy-links-causes-error/47671)
+
 ## 20240829.0
 
 - Minor: Adds timestamp to stats output

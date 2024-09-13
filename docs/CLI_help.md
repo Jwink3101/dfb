@@ -1,8 +1,8 @@
 # CLI Help
 
 
-version: `dfb-20240829.0`  
-Python: `Python 3.11.7`
+version: `dfb-20240912.0`  
+Python: `Python 3.11.5`
 
 
 # No Command

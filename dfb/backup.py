@@ -213,10 +213,15 @@ class Backup:
 
         t0 = time.time()
         c = 0
+
         for item in rcfiles:
             if item["IsDir"]:
-                dirs.add(item["Path"])
-                parents.add(os.path.dirname(item["Path"]))  # could be nested subdir
+                dirs.add(os.path.join(subdir, item["Path"]))
+
+                # could be nested w/o files so add the parent just in case
+                pdir = os.path.join(subdir, os.path.dirname(item["Path"]))
+                parents.add(pdir.removesuffix("/"))
+
                 continue
             else:
                 file = item
