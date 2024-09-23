@@ -439,6 +439,22 @@ def parse(argv=None, shebanged=False):
             """,
     )
 
+    ls.add_argument(
+        "--list-only",
+        choices=["files", "dirs", "directories"],
+        default=None,
+        help="Only list files or directories (or dirs). Default is both",
+    )
+
+    ls.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="""
+            List all items recursively
+            """,
+    )
+
     snap = subparsers["lsnaps"] = subpar.add_parser(
         "snapshot",
         parents=[global_parent, list_parent, config_global],

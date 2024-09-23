@@ -715,6 +715,7 @@ class DFBDST:
         remove_delete=True,
         delete_only=False,
         conditions=None,
+        recursive=False,
     ):
         """
 
@@ -748,6 +749,9 @@ class DFBDST:
             WARNING: Do not do ('size >= ?',0) since that will then include the non-deleted
                      version. It is better to filter it later.
 
+        recursive: [False]
+            List all items, not just the one directory
+
         Some of this very clever SQL came from my reddit post here:
         https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
         """
@@ -764,75 +768,16 @@ class DFBDST:
 
         conditions = conditions or []
 
-        ## Directories.
-
-        # Use the snapshot query builde with all of the conditions to make a query with
-        # all valid files. Then use the fancy SQL to down-select directories. If it is a
-        # subdir, it needs an additional filter to remove the subdir from the apath names.
-        # The "QQQQ" sub is purely cosmetic to get the indents of the subquery *after* the
-        # dedents of the outer query
-        dir_query, dir_params = self._snapshot_query_builder(
-            path=subdir,
-            before=before,
-            after=after,
-            select="apath",
-            remove_delete=remove_delete,
-            delete_only=delete_only,
-            conditions=conditions,
-        )
-
-        params = dir_params.copy()
-        if subdir:
-            query = dedent(
-                f"""
-                WITH
-                    snappaths AS (
-                    QQQQ
-                    ),
-                    subpaths AS (
-                        SELECT SUBSTR(snappaths.apath, {len(subdir) + 2}) AS apath
-                        FROM snappaths
-                        WHERE snappaths.apath LIKE :subdir
-                    )
-                    
-                """
-            ).replace("QQQQ", indent(dir_query, " " * 8))
-            params["subdir"] = f"{subdir}/%"
-        else:
-            query = dedent(
-                f"""
-                WITH
-                    subpaths AS (
-                    QQQQ
-                    )"""
-            ).replace("QQQQ", indent(dir_query, " " * 8))
-
-        query += dedent(
-            """
-            -- Get just the next path element
-            -- https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
-            SELECT DISTINCT 
-                    SUBSTR(
-                        apath,
-                        1,
-                        CASE INSTR(apath, '/')
-                            WHEN 0
-                            THEN LENGTH(apath)
-                            ELSE INSTR(apath, '/')
-                        END
-                    ) AS sub
-            FROM subpaths
-            """
-        )
-        apaths = (r["sub"] for r in db.execute(query, params))
-        apaths = (apath for apath in apaths if apath.endswith("/"))
-        directories = [os.path.join(subdir, apath) for apath in apaths]
-
         ## Files
         fcond = conditions.copy()
-        fcond.append(
-            ["apath NOT LIKE :onedepth", {"onedepth": os.path.join(subdir, "%", "%")}]
-        )
+
+        if not recursive:
+            fcond.append(
+                [
+                    "apath NOT LIKE :onedepth",
+                    {"onedepth": os.path.join(subdir, "%", "%")},
+                ]
+            )
 
         groupselect = dedent(
             """
@@ -859,6 +804,84 @@ class DFBDST:
         )
 
         files = [DFBDST.fullrow2dict(r) for r in db.execute(fquery, fparams)]
+
+        ## Directories.
+        if recursive:
+            # Do this in Python as it is cleaner than SQL
+            directories = {os.path.dirname(file["apath"]) for file in files}
+
+            for directory in directories.copy():
+                if not directory:  # At root
+                    continue
+
+                directory = os.path.relpath(directory, subdir)  # remove subdir
+                while directory:
+                    if directory := os.path.dirname(directory):
+                        directories.add(os.path.join(subdir, directory))
+
+            directories.difference_update({"", "./"})
+        else:
+            # Use the snapshot query builder with all of the conditions to make a query with
+            # all valid files. Then use the fancy SQL to down-select directories. If it is a
+            # subdir, it needs an additional filter to remove the subdir from the apath names.
+            # The "QQQQ" sub is purely cosmetic to get the indents of the subquery *after* the
+            # dedents of the outer query
+            dir_query, dir_params = self._snapshot_query_builder(
+                path=subdir,
+                before=before,
+                after=after,
+                select="apath",
+                remove_delete=remove_delete,
+                delete_only=delete_only,
+                conditions=conditions,
+            )
+
+            params = dir_params.copy()
+            if subdir:
+                query = dedent(
+                    f"""
+                    WITH
+                        snappaths AS (
+                        QQQQ
+                        ),
+                        subpaths AS (
+                            SELECT SUBSTR(snappaths.apath, {len(subdir) + 2}) AS apath
+                            FROM snappaths
+                            WHERE snappaths.apath LIKE :subdir
+                        )
+                        
+                    """
+                ).replace("QQQQ", indent(dir_query, " " * 8))
+                params["subdir"] = f"{subdir}/%"
+            else:
+                query = dedent(
+                    f"""
+                    WITH
+                        subpaths AS (
+                        QQQQ
+                        )"""
+                ).replace("QQQQ", indent(dir_query, " " * 8))
+
+            query += dedent(
+                """
+                -- Get just the next path element
+                -- https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
+                SELECT DISTINCT 
+                        SUBSTR(
+                            apath,
+                            1,
+                            CASE INSTR(apath, '/')
+                                WHEN 0
+                                THEN LENGTH(apath)
+                                ELSE INSTR(apath, '/')
+                            END
+                        ) AS sub
+                FROM subpaths
+                """
+            )
+            apaths = (r["sub"] for r in db.execute(query, params))
+            apaths = (apath for apath in apaths if apath.endswith("/"))
+            directories = [os.path.join(subdir, apath) for apath in apaths]
 
         return directories, files
 

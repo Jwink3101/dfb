@@ -1,8 +1,8 @@
 # CLI Help
 
 
-version: `dfb-20240912.0`  
-Python: `Python 3.11.5`
+version: `dfb-20240923.0`  
+Python: `Python 3.11.7`
 
 
 # No Command
@@ -366,6 +366,7 @@ usage: dfb ls [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
               [--after TIMESTAMP] [--only TIMESTAMP] --config file
               [-o 'OPTION = VALUE'] [--header | --no-header] [--head N] [--tail N]
               [--human] [--timestamp-local] [-d] [--full-path] [-l]
+              [--list-only {files,dirs,directories}] [-r]
               [path]
 
 positional arguments:
@@ -378,6 +379,9 @@ options:
   --full-path           Show full path when listing subdirs
   -l, --long            Long listing with size, ModTime, path. Specify twice for
                         versions, total_size, size, ModTime, Timestamp, path.
+  --list-only {files,dirs,directories}
+                        Only list files or directories (or dirs). Default is both
+  -r, --recursive       List all items recursively
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing

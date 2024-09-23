@@ -90,6 +90,55 @@ def test_listing():
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {"mod.txt", "new1.txt", "n1d3.txt", "sub1/", "untouched.txt"}
 
+    # Recursive and only
+
+    out = test.ls("-d", "--no-header", "--recursive")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "mod.txt",
+        "n1d3.txt (DEL)",
+        "new1.txt",
+        "new2.txt",
+        "new3.txt",
+        "new4.txt",
+        "sub1/",
+        "sub1/file.txt (DEL)",
+        "sub2/",
+        "sub2/file.txt (DEL)",
+        "sub3/",
+        "sub3/file.txt (DEL)",
+        "sub4/",
+        "sub4/file.txt",
+        "untouched.txt",
+    }
+
+    out = test.ls("-d", "--no-header", "--recursive", "--list-only", "files")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "mod.txt",
+        "n1d3.txt (DEL)",
+        "new1.txt",
+        "new2.txt",
+        "new3.txt",
+        "new4.txt",
+        "sub1/file.txt (DEL)",
+        "sub2/file.txt (DEL)",
+        "sub3/file.txt (DEL)",
+        "sub4/file.txt",
+        "untouched.txt",
+    }
+
+    out = test.ls("-d", "--no-header", "--list-only", "dirs")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "sub1/",
+        "sub2/",
+        "sub3/",
+        "sub4/",
+    }
+
+    ## Head and tails
+
     out = test.ls("-d", "--no-header")
     items = {i.strip() for i in out.split("\n") if i.strip()}
     allitems = {
@@ -621,11 +670,71 @@ def test_tree():
         ).strip()
     )
 
+    ## Now test recursive
+    # print('\n'.join(f"{i!r}," for i in sorted(items)))
+    out = test.ls("--no-header")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "file1.txt",
+        "file2.txt",
+        "sub1/",
+        "sub2/",
+        "sub3/",
+    }
+
+    out = test.ls("--no-header", "--recursive")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "file1.txt",
+        "file2.txt",
+        "sub1/",
+        "sub1/file3.txt",
+        "sub1/file4.txt",
+        "sub1/ssub1/",
+        "sub1/ssub1/file6.txt",
+        "sub2/",
+        "sub2/file7.txt",
+        "sub2/ssub2/",
+        "sub2/ssub2/file8.txt",
+        "sub3/",
+        "sub3/ssub3/",
+        "sub3/ssub3/file9.txt",
+    }
+
+    out = test.ls("--no-header", "--recursive", "sub2")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "file7.txt",
+        "ssub2/",
+        "ssub2/file8.txt",
+    }
+
+    out = test.ls("--no-header", "--recursive", "sub2", "--full-path")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "sub2/file7.txt",
+        "sub2/ssub2/",
+        "sub2/ssub2/file8.txt",
+    }
+
+    out = test.ls("--no-header", "--recursive", "sub2", "--list-only", "files")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "file7.txt",
+        "ssub2/file8.txt",
+    }
+
+    out = test.ls("--no-header", "--recursive", "sub2", "--list-only", "dirs")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "ssub2/",
+    }
+
 
 if __name__ == "__main__":
     test_listing()
-    # test_del()
-    # test_tree()
+    test_del()
+    test_tree()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

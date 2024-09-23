@@ -2,6 +2,10 @@
 
 (newest on top)
 
+## 20240923.0
+
+- Adds `--recursive` and `--list-only` to `ls`
+
 ## 20240912.0
 
 - Minor: Bug fix with `--subdir` and `empty_directory_markers = True`

@@ -151,18 +151,31 @@ def ls(config):
         after=args.after,
         remove_delete=args.deleted == 0,
         delete_only=args.deleted > 1,
+        recursive=args.recursive,
     )
-    ####
-    items = list(subdirs) + files
+
+    subdirs = list(subdirs)
+
+    if args.list_only in {"directories", "dirs"}:
+        files[:] = []
+    elif args.list_only == "files":
+        subdirs[:] = []
+    # argparse will block other options
+
+    items = subdirs + files
     items.sort(key=lambda i: i if isinstance(i, str) else i["apath"])
 
     # Build a table
     table = []
     if args.header:
         table.append(["versions", "total_size", "size", "ModTime", "Timestamp", "path"])
+
     for item in items:
         if isinstance(item, str):  # subdir
-            item = item if args.full_path else os.path.relpath(item, args.path)
+            if (sub := os.path.relpath(item, args.path)) == ".":
+                continue
+
+            item = item if args.full_path else sub
             table.append(["", "", "", "", "", f"{item.removesuffix('/')}/"])
             continue
 
