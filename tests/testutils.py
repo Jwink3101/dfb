@@ -9,6 +9,7 @@ import hashlib
 import shutil
 import atexit
 import logging
+from functools import cached_property
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +31,53 @@ _r = repr
 dfb.cli._TESTMODE = True
 
 
+class StringBufferBytesIO(io.TextIOWrapper):
+    """
+    Acts like io.StringIO but also supports .buffer for bytes
+    """
+
+    def __init__(self, buffer=None, encoding="utf-8"):
+        # If no buffer is provided, create a new BytesIO buffer
+        if buffer is None:
+            buffer = io.BytesIO()
+        super().__init__(buffer, encoding=encoding)
+
+    @property
+    def bytes_buffer(self):
+        return self.buffer.raw
+
+
 class Capture:
-    def __init__(self):
-        return
-
     def __enter__(self):
-        self._out, self._err = sys.stdout, sys.stderr
-        sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+        self.old_stdout = sys.stdout
+        self.old_stderr = sys.stderr
+
+        self.stdout_buffer = io.BytesIO()
+        self.stderr_buffer = io.BytesIO()
+
+        sys.stdout = io.TextIOWrapper(self.stdout_buffer, encoding="utf-8")
+        sys.stderr = io.TextIOWrapper(self.stderr_buffer, encoding="utf-8")
+
         return self
 
-    def __exit__(self, *_):
-        self.out = sys.stdout.getvalue()
-        self.err = sys.stderr.getvalue()
-        sys.stdout, sys.stderr = self._out, self._err
-        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.stdout.flush()
+        sys.stderr.flush()
+        self.stdout_buffer.flush()
+        self.stderr_buffer.flush()
+
+        self.out_bytes = self.stdout_buffer.getvalue()
+        self.err_bytes = self.stderr_buffer.getvalue()
+        sys.stdout = self.old_stdout
+        sys.stderr = self.old_stderr
+
+    @cached_property
+    def out(self):
+        return self.out_bytes.decode("utf-8")
+
+    @cached_property
+    def err(self):
+        return self.err_bytes.decode("utf-8")
 
 
 class Tester:

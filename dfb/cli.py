@@ -455,6 +455,14 @@ def parse(argv=None, shebanged=False):
             """,
     )
 
+    ls.add_argument(
+        "--real-path",
+        "--rpath",
+        action="store_true",
+        dest="rpath",
+        help="print the relevant (based on time settings) real path (rpath) of file",
+    )
+
     snap = subparsers["lsnaps"] = subpar.add_parser(
         "snapshot",
         parents=[global_parent, list_parent, config_global],
@@ -615,7 +623,7 @@ def parse(argv=None, shebanged=False):
     #################################################
     adv = subparsers["adv"] = subpar.add_parser(
         "advanced",
-        help="Advanced Functions. Run `%(prog)s advanced -h` for help",
+        help="Advanced functions. Run `%(prog)s advanced -h` for help",
     )
 
     subparsers["adv_main"] = adv_subpar = adv.add_subparsers(
@@ -741,6 +749,86 @@ def parse(argv=None, shebanged=False):
     )
 
     #################################################
+    ## cli utils Subparser
+    #################################################
+    cliutil = subparsers["utils"] = subpar.add_parser(
+        "utils",
+        help="CLI utility functions. Run `%(prog)s utils -h` for help",
+    )
+
+    subparsers["utils_main"] = cliutil_subpar = cliutil.add_subparsers(
+        dest="command",
+        title="Commands",
+        required=True,
+        metavar="command",
+        description="Run `%(prog)s <command> -h` for help",
+    )
+
+    #################################################
+    ## cli utils apath2rpath
+    #################################################
+
+    a2r_parser = subparsers["apath2rpath"] = cliutil_subpar.add_parser(
+        "apath2rpath",
+        parents=[],
+        help="Convert apparent path (apath) and date to a real path (rpath)",
+        description="""
+            Convert apparent path (apath) and date to a real path (rpath)
+            """,
+    )
+
+    a2r_parser.add_argument(
+        "--date",
+        metavar="TIMESTAMP",
+        help=f"Specify timestamp for the filenames. Default is current time. {ISODATEHELP}",
+    )
+    a2r_parser.add_argument(
+        "-0",
+        "--print0",
+        action="store_true",
+        help="Seperate multiple items with a null byte instead of newline",
+    )
+
+    a2r_parser.add_argument(
+        "files",
+        nargs="+",
+        help="""
+            Specify one or more files. If '-' is specified, will read stdin 
+            (and automatically handle newlines or null-bytes).
+            """,
+    )
+
+    #################################################
+    ## cli utils apath2rpath
+    #################################################
+
+    r2a_parser = subparsers["rpath2apath"] = cliutil_subpar.add_parser(
+        "rpath2apath",
+        parents=[],
+        help="Convert real path (rpath) an apparent path (apath) and date",
+        description="""
+            Convert real path (rpath) an apparent path (apath) and date. Returns data in
+            JSONLines format with an ISO8601 date
+            """,
+    )
+
+    r2a_parser.add_argument(
+        "--timestamp-local",
+        action="store_true",
+        help="""
+            Return timestamps in local time instead of UTC""",
+    )
+
+    r2a_parser.add_argument(
+        "files",
+        nargs="+",
+        help="""
+            Specify one or more files. If '-' is specified, will read stdin 
+            (and automatically handle newlines or null-bytes).
+            """,
+    )
+
+    #################################################
     ## DONE
     #################################################
     args = parser.parse_args(argv)
@@ -825,6 +913,16 @@ def _cli(cliconfig):
         verbosity += 1
     verbosity += getattr(cliconfig, "verbose", 0) - getattr(cliconfig, "quiet", 0)
     verbosity = max([0, verbosity])
+
+    # handle cli utils first since they do not need a config file.
+    if cliconfig.command == "apath2rpath":
+        from .cliutils import cli_apath2rpath
+
+        return cli_apath2rpath(cliconfig)
+    elif cliconfig.command == "rpath2apath":
+        from .cliutils import cli_rpath2apath
+
+        return cli_rpath2apath(cliconfig)
 
     try:
         add_params = {}

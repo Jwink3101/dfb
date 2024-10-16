@@ -166,9 +166,7 @@ def ls(config):
     items.sort(key=lambda i: i if isinstance(i, str) else i["apath"])
 
     # Build a table
-    table = []
-    if args.header:
-        table.append(["versions", "total_size", "size", "ModTime", "Timestamp", "path"])
+    table = [["versions", "total_size", "size", "ModTime", "Timestamp", "path"]]
 
     for item in items:
         if isinstance(item, str):  # subdir
@@ -197,7 +195,8 @@ def ls(config):
             ts = ts.astimezone().strftime(f"{STRFTIME_FMT}%z")
         else:
             ts = ts.strftime(f"{STRFTIME_FMT}Z")
-        path = item["apath"]
+
+        path = item["apath"] if not args.rpath else item["rpath"]
         path = path if args.full_path else os.path.relpath(path, args.path)
 
         if args.human:
@@ -213,11 +212,20 @@ def ls(config):
         table.append([versions, tot_size, size, mtime, ts, path])
 
     if args.long == 0:
-        table = [row[-1:] for row in table]
+        keep = ["path"]
     elif args.long == 1:
-        table = [[row[2], row[3], row[5]] for row in table]  # size,ModTime,path
-    else:  # args.long == 2:
-        pass  # Just to be more clear
+        keep = ["size", "ModTime", "path"]
+    else:
+        keep = ["versions", "total_size", "size", "ModTime", "Timestamp", "path"]
+
+    ikeep = [table[0].index(col) for col in keep]
+    table = [[row[i] for i in ikeep] for row in table]
+
+    if args.rpath:  # Rename path to rpath title
+        table[0] = [c if c != "path" else "rpath" for c in table[0]]
+
+    if not args.header:
+        table = table[1:]
 
     if not table:
         print(f"No files under {args.path!r}. Check the path and the date")

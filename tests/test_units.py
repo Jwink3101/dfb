@@ -112,6 +112,34 @@ def test_rpath2apath():
         == r2a("file.TaR.gZ.20240126094501")
     )
 
+    # Test with multiple dates.
+    # This is a tough edge case. If the file has a valid datetag already but does *not*
+    # have an extension, this should put the tag BEFORE the existing one
+
+    assert r2a("file.19700101000001") == ("file", 1, "")
+    assert r2a("file.19700101000002.19700101000001") == ("file.19700101000001", 2, "")
+    assert r2a("file.19700101000003.19700101000002.19700101000001") == (
+        "file.19700101000003.19700101000001",
+        2,
+        "",
+    )
+
+    # There is still an edge case around something like: "file.19700101000002.jpg.19700101000001"
+    # This is ambiguous! The smart-split will call 'jpg.19700101000001' the ext
+    # because jpg is a MIME type but it isn't really clear. I am leaving this note but I
+    # am also okay with this edge case because it comes from manual ones only!
+
+    assert r2a("file.19700101000002.jpg.19700101000001") == (
+        "file.jpg.19700101000001",
+        2,
+        "",
+    )
+    # how you get there
+    assert (
+        apath2rpath("file.jpg.19700101000001", "19700101000002")
+        == "file.19700101000002.jpg.19700101000001"
+    )
+
 
 def test_apath2rpath():
     a2r = apath2rpath
@@ -124,6 +152,17 @@ def test_apath2rpath():
     apath = "03/gallery4.png@resize=376,812&ssl=1"
     rpath = apath2rpath(apath, ts=1)
     assert rpath2apath(rpath) == (apath, 1, "")
+
+    # Multiple dates. Also test the verify
+    assert "file.19700101000001.19700101000002" == apath2rpath(
+        "file.19700101000002", "19700101000001"
+    )
+    assert "file.19700101000001.19700101000002" == apath2rpath(
+        "file.19700101000002", "19700101000001", verify=True
+    )
+    assert "file.19700101000001.19700101000002" == apath2rpath(
+        "file.19700101000002", "19700101000001", verify=False
+    )
 
 
 def test_time2all():

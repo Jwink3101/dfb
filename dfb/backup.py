@@ -149,18 +149,25 @@ class Backup:
             ).start()
             source_files = sthread.join()
             dthread.join()
+
+            self._proc_dst_files()
         else:
+            # when we don't have to refresh, do this before listing the source just
+            # so the user has some idea of how many files to possibly expect
+            self._proc_dst_files()
+
             logger.info("Listing source")
             source_files = self.list_src(**kwargs)
 
         self.src_files = {file["apath"]: file for file in source_files}
 
-        d = self.dstdb.snapshot(path=config.cliconfig.subdir)
+        logger.info(f"Found {len(self.src_files)} source Files")
+
+    def _proc_dst_files(self):
+        d = self.dstdb.snapshot(path=self.config.cliconfig.subdir)
         d = (self.dstdb.fullrow2dict(row) for row in d)
         self.dst_files = {file["apath"]: file for file in d}
-
-        logger.info(f"Found {len(self.src_files)} source Files")
-        logger.info(f"Found {len(self.dst_files)} dest Files")
+        logger.info(f"Backup contains {len(self.dst_files)} current files")
 
     def list_src(self, stats=None):
         config = self.config

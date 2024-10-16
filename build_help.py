@@ -29,6 +29,9 @@ advanced
 advanced dbimport
 advanced prune-file
 advanced timestamp-include-filters
+utils
+utils apath2rpath
+utils rpath2apath
 """
 
 commands = [l.strip() for l in commands.split("\n") if l.strip()]
@@ -47,7 +50,6 @@ pyver = subprocess.check_output([sys.executable, "--version"], env=env).strip().
 helpmd.append(
     f"""
 version: `{ver}`  
-Python: `{pyver}`
 """
 )
 

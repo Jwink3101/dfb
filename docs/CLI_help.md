@@ -1,8 +1,7 @@
 # CLI Help
 
 
-version: `dfb-20240923.0`  
-Python: `Python 3.11.7`
+version: `dfb-20241016.0`  
 
 
 # No Command
@@ -47,7 +46,8 @@ Commands:
                         Note that this will include ones that were nominally pruned
                         but without all files
     prune               Prune older versions of the files
-    advanced            Advanced Functions. Run `dfb advanced -h` for help
+    advanced            Advanced functions. Run `dfb advanced -h` for help
+    utils               CLI utility functions. Run `dfb utils -h` for help
 
 ```
 
@@ -366,7 +366,7 @@ usage: dfb ls [-h] [-v] [-q] [--temp-dir TEMP_DIR] [--at TIMESTAMP]
               [--after TIMESTAMP] [--only TIMESTAMP] --config file
               [-o 'OPTION = VALUE'] [--header | --no-header] [--head N] [--tail N]
               [--human] [--timestamp-local] [-d] [--full-path] [-l]
-              [--list-only {files,dirs,directories}] [-r]
+              [--list-only {files,dirs,directories}] [-r] [--real-path]
               [path]
 
 positional arguments:
@@ -382,6 +382,8 @@ options:
   --list-only {files,dirs,directories}
                         Only list files or directories (or dirs). Default is both
   -r, --recursive       List all items recursively
+  --real-path, --rpath  print the relevant (based on time settings) real path (rpath)
+                        of file
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -996,5 +998,73 @@ Time Specification:
                         TIMESTAMP --after TIMESTAMP' since both are inclusive. Useful
                         if the exact timestamp is known such as from the 'timestamps'
                         command.
+
+```
+
+# utils
+
+
+```text
+usage: dfb utils [-h] command ...
+
+options:
+  -h, --help   show this help message and exit
+
+Commands:
+  Run `dfb utils <command> -h` for help
+
+  command
+    apath2rpath
+               Convert apparent path (apath) and date to a real path (rpath)
+    rpath2apath
+               Convert real path (rpath) an apparent path (apath) and date
+
+```
+
+# utils apath2rpath
+
+
+```text
+usage: dfb utils apath2rpath [-h] [--date TIMESTAMP] [-0] files [files ...]
+
+Convert apparent path (apath) and date to a real path (rpath)
+
+positional arguments:
+  files             Specify one or more files. If '-' is specified, will read stdin
+                    (and automatically handle newlines or null-bytes).
+
+options:
+  -h, --help        show this help message and exit
+  --date TIMESTAMP  Specify timestamp for the filenames. Default is current time.
+                    Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-
+                    DD[T]HH:MM:SS) with or without spaces, colons, dashes, "T", etc.
+                    Can optionally specify a numeric time zone (e.g. -05:00) or 'Z'.
+                    If no timezone is specified, it is assumed *local* time.
+                    Alternatively, can specify unix time with a preceding 'u' (e.g.
+                    'u1678560662'). Or can specify a time difference from the current
+                    time with any (and only) of the following: second[s], minute[s],
+                    hour[s], day[s], week[s]. Example: "10 days 1 hour 4 minutes 32
+                    seconds". (The order doesn't matter). Can also specify "now" for
+                    the current time.
+  -0, --print0      Seperate multiple items with a null byte instead of newline
+
+```
+
+# utils rpath2apath
+
+
+```text
+usage: dfb utils rpath2apath [-h] [--timestamp-local] files [files ...]
+
+Convert real path (rpath) an apparent path (apath) and date. Returns data in JSONLines
+format with an ISO8601 date
+
+positional arguments:
+  files              Specify one or more files. If '-' is specified, will read stdin
+                     (and automatically handle newlines or null-bytes).
+
+options:
+  -h, --help         show this help message and exit
+  --timestamp-local  Return timestamps in local time instead of UTC
 
 ```

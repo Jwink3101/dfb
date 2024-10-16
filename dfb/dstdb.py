@@ -15,18 +15,23 @@ import gzip as gz
 from functools import partialmethod
 from textwrap import dedent, indent
 
-from . import __version__, nowfun
-from .utils import time2all, MyRow, star, listify, smart_open, randstr, smart_splitext
+from . import __version__, nowfun, rpath2apath, apath2rpath
+from .utils import (
+    time2all,
+    MyRow,
+    star,
+    listify,
+    smart_open,
+    randstr,
+    smart_splitext,
+    NoTimestampInNameError,
+)
 from .timestamps import timestamp_parser
 from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
 from .threadmapper import thread_map_unordered as tmap
 
 
 logger = logging.getLogger(__name__)
-
-
-class NoTimestampInNameError(ValueError):
-    pass
 
 
 def sqldebug(sql):
@@ -1021,96 +1026,3 @@ class DFBDST:
             row.update(json.loads(remain))
 
         return row
-
-
-def rpath2apath(rpath):
-    """
-    convert rpath ('sub/dir/file.12345.txt')
-    to apath ('sub/dir/file.txt').
-
-    Can handle misplaced tags too
-
-    Returns apath, timestamp, flag
-    """
-    parent, name = os.path.split(rpath)
-
-    # Handle the special case of the tag at the end. This occurs
-    # if a file doesn't have an extension or was created manually (incorrectly).
-    # Otherwise, the dateflag is on the stem.
-    try:
-        stem, ext = os.path.splitext(name)
-        ts, flag = parse_dateflag(ext[1:])
-        stem, ext = os.path.splitext(stem)  # Split the rest
-    except (ValueError, IndexError):
-        # we KNOW name doesn't end in the tag and the tag isn't a valid mime-type so
-        # it MUST be on the stem
-        stem, ext = smart_splitext(name)
-        stem, ts = os.path.splitext(stem)
-        ts, flag = parse_dateflag(ts[1:])
-
-    apath = os.path.join(parent, stem + ext)
-
-    # Comment this out b/c older split names will give a false positive.
-    # if _verify and apath2rpath(apath,ts,flag=flag,_verify=False) != rpath:
-    #     logger.error(
-    #         f"Failed round-trip sanity check with {apath = }, {rpath = }. "
-    #         "Please submit a bug report"
-    #     )
-    return apath, ts, flag
-
-
-def parse_dateflag(ts):
-    """
-    Parse the dateflag (tag) of the file. Note that while the timestamp tools
-    are fairly forgiving, this one is not! It expects full date and time
-    though will allow some modification around that
-    """
-    if not ts:
-        raise ValueError()
-
-    if ts[-1] in "DR":  # Delete, Reference
-        flag = ts[-1]
-        ts = ts[:-1]
-    else:
-        flag = ""
-    ts = ts.removeprefix(".")
-
-    allow0 = set(string.digits + "-T:.")
-    allow1 = set(string.digits + ".")
-    tsclean = "".join(c for c in ts if c in allow1)
-    if len(tsclean) < 14 or any(c not in allow0 for c in ts):  # YYYYmmDDHHMMSS
-        raise ValueError()
-
-    ts, _, _, _ = time2all(ts)
-    return ts, flag
-
-
-def apath2rpath(apath, ts=None, *, flag="", verify=True):
-    """
-    Convert from apath,ts ('sub/dir/file.txt',12345)
-    to rpath ('sub/dir/file.12345.txt')
-
-    Will not be correct for references but *will* give the
-    referrer path
-    """
-    ts = ts or nowfun()[0]
-    ts, dt, _, _ = time2all(ts)
-
-    base, ext = smart_splitext(apath)
-    rpath = f"{base}.{dt}{flag}{ext}"
-
-    # Comment this out b/c older split names will give a false positive.
-    # if _verify and rpath2apath(rpath,_verify=False)[0] != apath:
-    #     logger.error(
-    #         f"Failed round-trip sanity check with {apath = }, {rpath = }. "
-    #         "Please submit a bug report"
-    #     )
-
-    # Sanity check:
-    if verify and rpath2apath(rpath) != (apath, ts, flag):
-        logger.warning(
-            f"Failed sanity check {apath = }, {rpath = }. Using fallback split"
-        )
-        base, ext = os.path.split(apath)
-        rpath = f"{base}.{dt}{flag}{ext}"
-    return rpath

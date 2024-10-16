@@ -3,12 +3,12 @@ import logging
 import os
 
 from .configuration import LOCK
-from .utils import time2all
+from .utils import time2all, rpath2apath, apath2rpath
 from .timestamps import timestamp_parser
 
 logger = logging.getLogger(__name__)
 
-__version__ = "20240923.0"
+__version__ = "20241016.0"
 MIN_RCLONE = 1, 63, 0
 
 

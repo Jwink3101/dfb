@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 tsrep = namedtuple("timestamps", ("ts", "dt", "obj", "pretty"))
 
 
+class NoTimestampInNameError(ValueError):
+    pass
+
+
 def time2all(dt_or_ts):
     """Convert from dt or ts to all formats"""
     if isinstance(dt_or_ts, str):
@@ -432,7 +436,7 @@ def smart_splitext(file):
         parts[1] = f".{parts[1]}"
         parts = parts[1:]
 
-    if len(parts) == 1:
+    if len(parts) == 1:  # Just file.ext
         return file, ""
 
     # Decide where to stop. This is bounded such that it will
@@ -444,3 +448,99 @@ def smart_splitext(file):
     stem = ".".join(parts[:-ix])
     ext = "." + ".".join(parts[-ix:])  # No ext covered above
     return os.path.join(parent, stem), ext
+
+
+def rpath2apath(rpath):
+    """
+    Convert the rpath to the apath with the time and flag.
+
+    This is designed to handle a few special cases. Notably, if the flag is
+    manually appended on to the file such as if done by hand (incorrectly).
+
+    Also note that in the case of a file like "file.<date1>.<date2>" with
+    no extension, it should return "file.<date2>" tagged at <date1> in accordance
+    with the split.
+    """
+    parent, rname = os.path.split(rpath)
+
+    # Case 1: smartsplit off ext. The tag will not be a MIME type
+    #         so this will work with file.20220625232247.tar.gz
+    #         and file.tar.20220625232247.gz
+    # NOTE: This comes FIRST in case of "file.<date1>.<date2>"
+    base_w_tag, ext = smart_splitext(rname)
+    base, tag = os.path.splitext(base_w_tag)
+    try:
+        ts, flag = parse_dateflag(tag)
+        apath = os.path.join(parent, f"{base}{ext}")
+        return apath, ts, flag
+    except ValueError:
+        pass
+
+    # Case 2: The extension is the end.
+    aname, tag = os.path.splitext(rname)
+    try:
+        ts, flag = parse_dateflag(tag)
+        apath = os.path.join(parent, aname)
+        return apath, ts, flag
+    except ValueError:
+        pass
+
+    raise NoTimestampInNameError(f"No timestamp in {rpath = }")
+
+
+re_datetag = re.compile(
+    r"""
+    ^                        # Start of the string
+    (\d{4})                  # Match any four digits representing the year (YYYY)
+    (0[1-9]|1[0-2])          # Match two digits for the month (01-09, 10-12)
+    (0[1-9]|[12][0-9]|3[01]) # Match two digits for the day (01-09, 10-29, 30-31)
+    ([01][0-9]|2[0-3])       # Match two digits for the hour (00-23)
+    ([0-5][0-9])             # Match two digits for the minutes (00-59)
+    ([0-5][0-9])             # Match two digits for the seconds (00-59)
+    (R|D)?                   # Optionally match an "R" or "D" at the end
+    $                        # End of the string
+    """,
+    re.VERBOSE,
+)
+
+
+def parse_dateflag(ts):
+    ts = ts.removeprefix(".")
+    if not (match := re_datetag.match(ts)):
+        raise ValueError()
+    ts, _, _, _ = time2all("".join(match.groups()[:-1]))
+    flag = match.groups("")[-1]
+    return ts, flag
+
+
+def apath2rpath(apath, ts=None, *, flag="", verify=True):
+    """
+    Convert from apath,ts ('sub/dir/file.txt',12345)
+    to rpath ('sub/dir/file.12345.txt')
+
+    Will not be correct for references but *will* give the
+    referrer path
+    """
+    from . import nowfun  # Avoid circular import
+
+    ts = ts or nowfun()[0]
+    ts, dt, _, _ = time2all(ts)
+
+    base, ext = smart_splitext(apath)
+    rpath = f"{base}.{dt}{flag}{ext}"
+
+    # Comment this out b/c older split names will give a false positive.
+    # if _verify and rpath2apath(rpath,_verify=False)[0] != apath:
+    #     logger.error(
+    #         f"Failed round-trip sanity check with {apath = }, {rpath = }. "
+    #         "Please submit a bug report"
+    #     )
+
+    # Sanity check:
+    if verify and rpath2apath(rpath) != (apath, ts, flag):
+        logger.warning(
+            f"Failed sanity check {apath = }, {rpath = }. Using fallback split"
+        )
+        base, ext = os.path.split(apath)
+        rpath = f"{base}.{dt}{flag}{ext}"
+    return rpath

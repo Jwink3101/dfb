@@ -2,6 +2,13 @@
 
 (newest on top)
 
+## 20241016.0
+
+- Adds `--real-path`  to `ls`
+- Adds `utils apath2rpath` and `utils rpath2apath` command line utilities
+- Internal: Better mapping of `rpath` to `apath` for some very particular edge cases. Associated tests.
+    - Edge Case: Filenames without normal extensions but with dfb-style dates already. For example: `file.<date1>` will become `file.<dfb date>.<date1>` and round-trip correctly. This is counter how it may be done (incorrectly) manually but supporting manually tagged files is secondary.
+
 ## 20240923.0
 
 - Adds `--recursive` and `--list-only` to `ls`

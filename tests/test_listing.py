@@ -90,7 +90,35 @@ def test_listing():
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {"mod.txt", "new1.txt", "n1d3.txt", "sub1/", "untouched.txt"}
 
-    # Recursive and only
+    ## rpath
+    out = test.ls("--no-header", "--real-path")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "mod.19700101000004.txt",
+        "new1.19700101000001.txt",
+        "new2.19700101000002.txt",
+        "new3.19700101000003.txt",
+        "new4.19700101000004.txt",
+        "sub4/",
+        "untouched.19700101000001.txt",
+    }
+
+    out = test.ls("--at", "u1.1", "--no-header", "--rpath")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "mod.19700101000001.txt",
+        "n1d3.19700101000001.txt",
+        "new1.19700101000001.txt",
+        "sub1/",
+        "untouched.19700101000001.txt",
+    }
+
+    # include header to check it says 'rpath'
+    out = test.ls("--at", "u1.1", "sub1", "--real-path", "--full-path")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {"rpath", "sub1/file.19700101000001.txt"}
+
+    ## Recursive and only
 
     out = test.ls("-d", "--no-header", "--recursive")
     items = {i.strip() for i in out.split("\n") if i.strip()}
@@ -135,6 +163,23 @@ def test_listing():
         "sub2/",
         "sub3/",
         "sub4/",
+    }
+
+    # with rpath
+    out = test.ls("--del", "-r", "--rpath", "--list-only", "files", "--no-header")
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "mod.19700101000004.txt",
+        "n1d3.19700101000003D.txt (DEL)",
+        "new1.19700101000001.txt",
+        "new2.19700101000002.txt",
+        "new3.19700101000003.txt",
+        "new4.19700101000004.txt",
+        "sub1/file.19700101000001.txt",
+        "sub1/file.19700101000002D.txt (DEL)",
+        "sub2/file.19700101000003D.txt (DEL)",
+        "sub3/file.19700101000004D.txt (DEL)",
+        "untouched.19700101000001.txt",
     }
 
     ## Head and tails
