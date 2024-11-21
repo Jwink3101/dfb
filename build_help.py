@@ -25,6 +25,7 @@ tree
 versions
 timestamps
 prune
+summary
 advanced
 advanced dbimport
 advanced prune-file

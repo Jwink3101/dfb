@@ -118,9 +118,35 @@ def test_listing():
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {"rpath", "sub1/file.19700101000001.txt"}
 
+    # references. Should point to the ref_rpath, not the regular rpath
+    assert (
+        not "../sub1/file.19700101000001.txt"
+        == test.ls("sub2", "--before", "u2.5", "--rpath", "--no-header").strip()
+    )
+    assert (
+        not "sub1/file.19700101000001.txt"
+        == test.ls(
+            "sub2", "--before", "u2.5", "--rpath", "--no-header", "--full-path"
+        ).strip()
+    )
+
+    assert test.ls("sub4", "--no-header").strip() == "file.txt"
+    assert (
+        test.ls("sub4", "--no-header", "--real-path").strip()
+        == "file.19700101000004R.txt"
+    )
+    assert (
+        test.ls("sub4", "--no-header", "--rpath", "--rpath").strip()
+        == "../sub1/file.19700101000001.txt"
+    )
+    assert (
+        test.ls("sub4", "--no-header", "--rpath", "--rpath", "--full-path").strip()
+        == "sub1/file.19700101000001.txt"
+    )
+
     ## Recursive and only
 
-    out = test.ls("-d", "--no-header", "--recursive")
+    out = test.ls("-d", "--no-header", "--recursive", "--list", "both")
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {
         "mod.txt",
@@ -136,6 +162,22 @@ def test_listing():
         "sub3/",
         "sub3/file.txt (DEL)",
         "sub4/",
+        "sub4/file.txt",
+        "untouched.txt",
+    }
+
+    out = test.ls("-d", "--no-header", "--recursive")  # default to --list files
+    items = {i.strip() for i in out.split("\n") if i.strip()}
+    assert items == {
+        "mod.txt",
+        "n1d3.txt (DEL)",
+        "new1.txt",
+        "new2.txt",
+        "new3.txt",
+        "new4.txt",
+        "sub1/file.txt (DEL)",
+        "sub2/file.txt (DEL)",
+        "sub3/file.txt (DEL)",
         "sub4/file.txt",
         "untouched.txt",
     }
@@ -175,10 +217,10 @@ def test_listing():
         "new2.19700101000002.txt",
         "new3.19700101000003.txt",
         "new4.19700101000004.txt",
-        "sub1/file.19700101000001.txt",
         "sub1/file.19700101000002D.txt (DEL)",
-        "sub2/file.19700101000003D.txt (DEL)",
-        "sub3/file.19700101000004D.txt (DEL)",
+        "sub2/file.19700101000002R.txt (DEL)",
+        "sub3/file.19700101000003R.txt (DEL)",
+        "sub4/file.19700101000004R.txt",
         "untouched.19700101000001.txt",
     }
 
@@ -441,6 +483,39 @@ def test_listing():
     with Capture() as cap:
         test.call(*cmd)
     assert ["--include", "*.19700101000003*"] == shlex.split(cap.out)
+
+    ## Summary
+    with Capture() as cap:
+        test.call("summary")
+    assert [l.strip() for l in cap.out.splitlines()] == [
+        l.strip()
+        for l in """\
+                Path:  '/'
+               After:  <<earliest>>
+              Before:  <<latest>>
+          Timestamps:  4
+               Total:  18
+             Deleted:  4
+               Moved:  5
+                Size:  76 (76 B)
+        """.strip().splitlines()
+    ]
+
+    with Capture() as cap:
+        test.call("summary", "--after", "u2")
+    assert [l.strip() for l in cap.out.splitlines()] == [
+        l.strip()
+        for l in """\
+                Path:  '/'
+               After:  'u2'
+              Before:  <<latest>>
+          Timestamps:  3
+               Total:  13
+             Deleted:  4
+               Moved:  5
+                Size:  24 (24 B)
+        """.strip().splitlines()
+    ]
 
 
 def test_del():
@@ -715,7 +790,7 @@ def test_tree():
         ).strip()
     )
 
-    ## Now test recursive
+    ## Now test recursive even though it's included above
     # print('\n'.join(f"{i!r}," for i in sorted(items)))
     out = test.ls("--no-header")
     items = {i.strip() for i in out.split("\n") if i.strip()}
@@ -727,7 +802,7 @@ def test_tree():
         "sub3/",
     }
 
-    out = test.ls("--no-header", "--recursive")
+    out = test.ls("--no-header", "--recursive", "--list", "both")
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {
         "file1.txt",
@@ -750,11 +825,11 @@ def test_tree():
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {
         "file7.txt",
-        "ssub2/",
+        # "ssub2/", # Dirs not included anymore
         "ssub2/file8.txt",
     }
 
-    out = test.ls("--no-header", "--recursive", "sub2", "--full-path")
+    out = test.ls("--no-header", "--recursive", "sub2", "--full-path", "--list", "both")
     items = {i.strip() for i in out.split("\n") if i.strip()}
     assert items == {
         "sub2/file7.txt",

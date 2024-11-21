@@ -156,10 +156,16 @@ def ls(config):
 
     subdirs = list(subdirs)
 
-    if args.list_only in {"directories", "dirs"}:
+    # default args.list_only option
+    if args.list_only is None:
+        args.list_only = "files" if args.recursive else "both"
+
+    if args.list_only == "dirs":
         files[:] = []
     elif args.list_only == "files":
         subdirs[:] = []
+    # elif args.list_only in {None, "both"}":
+    #    pass # Not needed but feels more complete
     # argparse will block other options
 
     items = subdirs + files
@@ -196,7 +202,12 @@ def ls(config):
         else:
             ts = ts.strftime(f"{STRFTIME_FMT}Z")
 
-        path = item["apath"] if not args.rpath else item["rpath"]
+        path = item["apath"]
+        if args.rpath:  # If it's a reference, we'd prefer ref_rpath
+            if item["isref"] and args.rpath == 1:
+                path = item["ref_rpath"]
+            else:
+                path = item["rpath"]
         path = path if args.full_path else os.path.relpath(path, args.path)
 
         if args.human:
@@ -315,7 +326,7 @@ def file_versions(config):
     print(out, flush=True)
 
 
-def timestamps(config):
+def _timestamps_query(config):
     args = config.cliconfig
     dstdb = DFBDST(config)
 
@@ -377,7 +388,13 @@ def timestamps(config):
         ORDER BY timestamp""",
         cond_dict,
     )
+    return ts_query
 
+
+def timestamps(config):
+    args = config.cliconfig
+
+    ts_query = _timestamps_query(config)
     table = []
     if args.header:
         table.append(["Timestamp", "Total", "Deleted", "Moved", "Size"])
@@ -411,6 +428,34 @@ def timestamps(config):
     )
 
     print(tabulate(table), flush=True)
+
+
+def summary(config):
+    args = config.cliconfig
+
+    before = args.before
+    after = args.after
+    path = args.path
+
+    ts = list(_timestamps_query(config))
+
+    res = {}
+
+    res["Path"] = repr(path.removesuffix("/").removeprefix("./") if path else "/")
+    res["After"] = repr(after) if after else "<<earliest>>"
+    res["Before"] = repr(before) if before else "<<latest>>"
+    res["Timestamps"] = str(len(ts))
+
+    res["Total"] = str(sum(r["num_total"] for r in ts))
+    res["Deleted"] = str(sum(r["num_del"] for r in ts))
+    res["Moved"] = str(sum(r["num_mv"] for r in ts))
+
+    res["Size"] = sum(r["size"] for r in ts)
+    res["Size"] = (
+        f"{res['Size']} ({human_readable_bytes(res['Size'],fmt=True,short=True)})"
+    )
+
+    print(tabulate([[f"{k}:", v] for k, v in res.items()]))
 
 
 def timestamp_include_filters(config):

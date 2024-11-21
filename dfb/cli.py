@@ -440,10 +440,15 @@ def parse(argv=None, shebanged=False):
     )
 
     ls.add_argument(
+        "--list",
         "--list-only",
-        choices=["files", "dirs", "directories"],
+        dest="list_only",
+        choices=["files", "dirs", "both"],
         default=None,
-        help="Only list files or directories (or dirs). Default is both",
+        help="""
+            Only list files or directories (or dirs). Default 'both' normally or 
+            'files' for --recursive mode.
+            """,
     )
 
     ls.add_argument(
@@ -458,9 +463,14 @@ def parse(argv=None, shebanged=False):
     ls.add_argument(
         "--real-path",
         "--rpath",
-        action="store_true",
+        action="count",
+        default=0,
         dest="rpath",
-        help="print the relevant (based on time settings) real path (rpath) of file",
+        help="""
+            Print the relevant (based on time settings) real path (rpath) of file. 
+            Specify one to print the real-path a reference file and twice to print
+            the referent
+            """,
     )
 
     snap = subparsers["lsnaps"] = subpar.add_parser(
@@ -618,6 +628,26 @@ def parse(argv=None, shebanged=False):
             major performance enhancement.
             """,
     )
+
+    #################################################
+    ## Summary
+    #################################################
+    summary = subparsers["summary"] = subpar.add_parser(
+        "summary",
+        parents=[
+            global_parent,
+            # list_parent,
+            config_global,
+            when_parent,
+            # list_parent_settings,
+        ],
+        help="Summary of files",
+    )
+
+    summary.add_argument(
+        "path", default="", nargs="?", help="Starting path. Defaults to the top"
+    )
+
     #################################################
     ## Advanced Subparser
     #################################################
@@ -1031,6 +1061,11 @@ def _cli(cliconfig):
             else:
                 prune.byrpaths()
             return prune
+        elif cliconfig.command == "summary":
+            from .listing import summary
+
+            summary(config)
+
         elif cliconfig.command == "timestamp-include-filters":
             from .listing import timestamp_include_filters
 

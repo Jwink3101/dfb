@@ -2,6 +2,15 @@
 
 (newest on top)
 
+## 20241121.0
+
+- Adds `summary` command which essentially aggregats timestamps.
+
+Minor
+
+- Fixed bug with `ls --real-path` to show the path of the reference marker rather than the referenced path. If you specify once, it shows the reference. Twice will show the referent.
+- Changed default `--list / --list-only` option to be `files` if `--recursive`. Adds `--list` flag as shorter option. Adds "both"
+
 ## 20241016.0
 
 - Adds `--real-path`  to `ls`
