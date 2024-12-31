@@ -3,7 +3,7 @@
 (newest on top)
 
 
-## BETA-20241231.0
+## 20241231.0BETA
 
 - Fixed (and added test) bug where refreshing without a snapshot could cause an error.
 - Changed ``$DFB_CONFIG_FILE` to `$DFB_CONFIG` but will fall back

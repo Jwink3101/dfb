@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 import sys, shutil
 import subprocess, os, re
+from pathlib import Path
+
+# Read the contents of your README file
+this_directory = Path(__file__).parent
+long_description = (this_directory / "readme.md").read_text()
 
 # This shouldn't be needed since I have python_requires set but just in case:
 if sys.version_info < (3, 9):
@@ -8,7 +13,16 @@ if sys.version_info < (3, 9):
 _r = repr
 import dfb
 
-dfb_version = dfb.__version__
+# Extract the version from the module file
+def get_version():
+    version_file = this_directory / "dfb" / "__init__.py"
+    with open(version_file, "r") as f:
+        for line in f:
+            match = re.match(r"^__version__ = ['\"]([^'\"]*)['\"]", line)
+            if match:
+                return match.group(1)
+    raise RuntimeError("Version not found in dfb/__init__.py")
+dfb_version = get_version()
 
 from setuptools import setup
 
@@ -47,7 +61,7 @@ try:
     setup(
         name="dfb",
         packages=["dfb", "dfbmount", "dfblink"],
-        long_description=open("readme.md").read(),
+        long_description=long_description,
         install_requires=["requests"],
         entry_points={
             "console_scripts": [
@@ -59,6 +73,7 @@ try:
         },
         version=dfb.__version__,  # Do not include git as per PEP440
         description="Dated File Backup",
+        long_description_content_type="text/markdown",
         url="https://github.com/Jwink3101/dfb/",
         author="Justin Winokur",
         author_email="Jwink3101@users.noreply.github.com",

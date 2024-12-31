@@ -1,7 +1,7 @@
 # CLI Help
 
 
-version: `dfb-BETA-20241231.0`  
+version: `dfb-20241231.0BETA`  
 
 
 # No Command
