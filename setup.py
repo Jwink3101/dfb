@@ -13,6 +13,7 @@ if sys.version_info < (3, 9):
 _r = repr
 import dfb
 
+
 # Extract the version from the module file
 def get_version():
     version_file = this_directory / "dfb" / "__init__.py"
@@ -22,6 +23,8 @@ def get_version():
             if match:
                 return match.group(1)
     raise RuntimeError("Version not found in dfb/__init__.py")
+
+
 dfb_version = get_version()
 
 from setuptools import setup
