@@ -800,7 +800,7 @@ def rcpathsplit(path):
     return fs, remote
 
 
-def rcpathjoin(*args, local_root=False):
+def rcpathjoin(*args):
     """
     This is like os.path.join but does some rclone-specific things because
     there could be a ':' in the first part.

@@ -81,7 +81,7 @@ Assuming this is a new setup, just run it:
 Or set the environment:
 
 ```bash
-export DFB_CONFIG_FILE=path/to/config.py
+export DFB_CONFIG=path/to/config.py
 $ dfb backup
 ```
 

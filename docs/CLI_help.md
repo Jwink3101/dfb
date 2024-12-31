@@ -1,7 +1,7 @@
 # CLI Help
 
 
-version: `dfb-20241121.0`  
+version: `dfb-BETA.20241231.0`  
 
 
 # No Command
@@ -118,9 +118,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -173,9 +172,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -224,9 +222,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -309,9 +306,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -419,9 +415,8 @@ Time Specification:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -497,9 +492,8 @@ Time Specification:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -563,9 +557,8 @@ Time Specification:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -609,9 +602,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -666,9 +658,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -761,9 +752,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -821,9 +811,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -918,9 +907,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -969,9 +957,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -1029,9 +1016,8 @@ Global Settings:
 
 Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
-                        $DFB_CONFIG_FILE environment variable or is implied if
-                        executing the config file itself. $DFB_CONFIG_FILE is
-                        currently not set.
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
   -o 'OPTION = VALUE', --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
@@ -1074,16 +1060,14 @@ Time Specification:
 usage: dfb utils [-h] command ...
 
 options:
-  -h, --help   show this help message and exit
+  -h, --help     show this help message and exit
 
 Commands:
   Run `dfb utils <command> -h` for help
 
   command
-    apath2rpath
-               Convert apparent path (apath) and date to a real path (rpath)
-    rpath2apath
-               Convert real path (rpath) an apparent path (apath) and date
+    apath2rpath  Convert apparent path (apath) and date to a real path (rpath)
+    rpath2apath  Convert real path (rpath) an apparent path (apath) and date
 
 ```
 

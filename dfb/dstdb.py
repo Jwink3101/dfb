@@ -27,6 +27,7 @@ from .utils import (
     NoTimestampInNameError,
 )
 from .timestamps import timestamp_parser
+from . import rclonerc
 from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
 from .threadmapper import thread_map_unordered as tmap
 
@@ -334,8 +335,13 @@ class DFBDST:
         params["srcFs"] = rcpathjoin(self.config.dst, ".dfb/snapshots")
         snap_dest = self.dbcache_dir / self.config.config_id
         params["dstFs"] = str(snap_dest)
-        rc.call("sync/sync", params=params)
-        logger.debug(f"sync snaps with {params = }")
+        try:
+            logger.debug(f"sync snaps with {params = }")
+            rc.call("sync/sync", params=params)
+        except rclonerc.RcloneError:
+            logger.info("Unable to load snapshots from remote to accelerate refresh.")
+            logger.debug(f"Couldn't load {params['srcFs']!r}")
+            return
 
         for snap in sorted(snap_dest.rglob("**/*.jsonl*"), key=lambda p: p.name):
             c = 0

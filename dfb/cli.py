@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 _TESTMODE = False
 
-DFB_CONFIG = os.environ.get("DFB_CONFIG_FILE", None)
+DFB_CONFIG = os.environ.get("DFB_CONFIG", os.environ.get("DFB_CONFIG_FILE", None))
 argv = None
 
 ISODATEHELP = """
@@ -57,8 +57,8 @@ def parse(argv=None, shebanged=False):
     )
     config_help = f"""
         (Required) Specify config file. Can also be specified via the 
-        $DFB_CONFIG_FILE environment variable or is implied if executing the config
-        file itself. $DFB_CONFIG_FILE is currently 
+        $DFB_CONFIG environment variable or is implied if executing the config
+        file itself. $DFB_CONFIG is currently 
         {('set to ' + repr(DFB_CONFIG)) if DFB_CONFIG else 'not set'}. 
         """
     if shebanged:

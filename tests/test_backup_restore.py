@@ -1411,6 +1411,27 @@ def test_empty_dirs():
     } == set(testutils.tree("restore2/", hidden=True))
 
 
+def test_refresh_no_snapshots():
+    test = testutils.Tester(name="refresh_no_snapshots")
+    test.write_config()
+
+    test.write_pre("src/A.txt", "A")
+    test.write_pre("src/B.txt", "B")
+    test.backup("-v", offset=1)
+
+    test.write_pre("src/A.txt", "AA")
+    test.backup("-v", offset=3)
+
+    test.write_pre("src/B.txt", "BB")
+    test.backup("-v", offset=5)
+
+    shutil.rmtree("dst/.dfb/")
+    test.call("refresh", "-vv")  # This used to throw errors on pulling the snapshot
+
+    log = test.logs[-1][0]
+    assert "Unable to load snapshots from remote" in log
+
+
 if __name__ == "__main__":
     test_main("reference")
     #     test_main("copy")
@@ -1438,6 +1459,7 @@ if __name__ == "__main__":
     #     test_min_size()
     #     test_push_snapshots()
     #     test_empty_dirs()
+    #     test_refresh_no_snapshots()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

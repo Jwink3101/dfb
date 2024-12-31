@@ -2,6 +2,13 @@
 
 (newest on top)
 
+
+## BETA.20241231.0
+
+- Fixed (and added test) bug where refreshing without a snapshot could cause an error.
+- Changed ``$DFB_CONFIG_FILE` to `$DFB_CONFIG` but will fall back
+- Add "Beta" to the version number
+
 ## 20241121.0
 
 - Adds `summary` command which essentially aggregats timestamps.
