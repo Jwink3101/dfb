@@ -138,16 +138,7 @@ def iso8601_parser(timestamp, aware=False, utc=False, epoch=False):
             if isinstance(aware, str) and aware.lower() == "utc":
                 dt = dt.replace(tzinfo=datetime.timezone.utc)
             else:  # local
-                # I am not sure why .astimezone() isn't working as one would expect with
-                # DST. See https://www.reddit.com/r/learnpython/comments/1214sa1/different_timezones_from_astimezone_parsed_naive/
-                # where I asked
-
-                # What *should* work
-                # dt = dt.astimezone()
-
-                # Alternative
-                tz = datetime.datetime.now().astimezone().tzinfo
-                dt = dt.replace(tzinfo=tz)
+                dt = dt.astimezone()
 
         if utc:
             dt = dt.astimezone(datetime.timezone.utc)

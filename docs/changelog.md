@@ -2,6 +2,10 @@
 
 (newest on top)
 
+## 20250216.0BETA
+
+- Fixed a bug with converting times to local. Dfb was erroneously assuming any specified time was in the time zone of the computer/user *at that moment* and not the timezone of the computer/user for the given time. For example, if it was Standard Time but you gave a date in Daylight Savings Time, it would still make it standard time. This has no affect on anything but listings
+- Updated readme
 
 ## 20241231.0BETA
 

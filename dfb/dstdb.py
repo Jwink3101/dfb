@@ -91,6 +91,12 @@ class DFBDST:
         items = ",".join((" ".join(row)) for row in self.COLS)
         db = self.db()
 
+        try:
+            with db:
+                db.execute("PRAGMA journal_mode = wal")
+        except sqlite3.OperationalError:  # pragma: no cover
+            pass
+
         # test:
         try:
             with db:

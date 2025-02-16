@@ -750,7 +750,8 @@ class Backup:
             COUNT(size) as num
             """
         cur = self.dstdb.snapshot(select=select).fetchone()
-        num, units = human_readable_bytes(cur["totsize"])
+        tot = cur["totsize"] or 0
+        num, units = human_readable_bytes(tot)
         s = "s" if cur["num"] != 1 else ""
         stats.append(f"Current {cur['num']} file{s} ({num:0.2f} {units})")
 

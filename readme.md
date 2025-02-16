@@ -7,28 +7,32 @@
 
 # dfb - Dated File Backup
 
-The dfb backup tool utilizes rclone to create full-file, append-only backups that allow easy restoration to any point in time. Files are uploaded with the upload date appended to its name. The design focuses on simplicity, easy understanding, and restoration without special tools. It prioritizes full-file backups stored natively on the remote, continuous rollback capability, straightforward backups and restores, and support for append-only storage. To accomplish this, it sacrifices some efficiency and advanced features. It may not be the the most efficient, advanced, fast, featurefull, sexy, or sophisticated backup tool but these are great tradeoffs for peace-of-mind with backups! 
+Dated File Backup (dfb) is a simple yet powerful tool for full-file, incremental backups. With dfb, every new or modified file is uploaded with the date appended to the filename, ensuring easy tracking and retrieval. Deleted files are noted with a small dated delete marker, and optionally, renamed files can be referenced. All files are stored as full copies directly on the remote server.
 
-Many other popular backup tools/strategies including [macOS Time Machine][tm], [rsnapshot][rsnap] and rsync with `--link-dest` ([example][rs]) have the same (or even *worse*) tradeoffs and don't support cloud storage. Block-based backup tools like [restic][restic], [kopia][kopia], [borg][borg], and [Duplicacy][dup] offer increased efficiency and deduplication but are more prone to errors/corruption, more complicated, and are all but impossible to restore without the original tool. Their complexity also leads to increased risk of corruption.
+**Simplicity is dfb's greatest strength.** Unlike more complex tools, dfb allows backups to be manually understood, verified, and restored to any point in time without needing the tool itself or a deep understanding of backup formats. The format can be easily deciphered without the need for additional documentation. This transparency ensures peace of mind and reduces reliance on proprietary systems.
 
-Design Tenets:
+Utilizing rclone as an interface to both source and destination, dfb supports a wide range of storage options, enabling seamless cloud-to-cloud backups. Additionally, it natively supports WORM/immutable/append-only destination remotes, enhancing data security.
 
-- **Easy to understand, interrogate, and restore**. The backup format is easily comprehended and can be reverse engineered simply. No special tools are needed to restore in theory (except if using crypt, you need to decrypt it). The format is about as straightforward as possible!
-- **Backup full copies of all files**. All files are full copies stored natively and can be downloaded right away (except for reference files), with or without special tools. This is *less efficient* than block-based tools, but that comes with the advantages noted above.
-- **Restore to any point in time**. Can easily rollback to any point-in-time in the backup.
-    - **Continuous in time is better than snapshots**. Many tools work off of synthetic snapshots. Snapshots enable pruning like "keep 1 snapshot per week" but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point-in-time continuously *and* look at all versions of a specific file (with or without the tool itself to faciliate). dfb can still be pruned of "prune files older than XYZ days" and/or "prune all but that last N versions".
-- **Support append-only/immutable storage natively**. There is never a need to delete files except for pruning. Nothing ever gets renamed, deleted, or modified.
+Many popular backup solutions, such as [macOS Time Machine][tm], [rsnapshot][rsnap], and rsync with `--link-dest` ([example][rs]), have similar or even greater limitations, particularly in cloud storage support. Block-based, cloud-native tools like [restic][restic] and [kopia][kopia] offer efficiency and deduplication but are often more error-prone, complex, and difficult to restore or verify without the original tool.
 
+With dfb, there is no need for special initial backups or periodic snapshots, simplifying the backup process. This straightforward approach reduces the risk of errors and ensures that backups are always accessible and verifiable.
+
+Choose dfb for a backup solution that prioritizes simplicity, transparency, and reliability, giving you full control over your data without the complexities of more sophisticated systems. However, dfb may not be ideal for large files with frequent small changes, as it stores full copies. For most needs, dfb provides a reliable, transparent backup solution without the complexities of more sophisticated systems.
 
 [tm]:https://support.apple.com/en-us/HT201250
 [rsnap]:https://rsnapshot.org/
 [rs]:https://web.archive.org/web/20230830063440/https://digitalis.io/blog/linux/incremental-backups-with-rsync-and-hard-links/
 [restic]:https://restic.net/
 [kopia]:https://kopia.io/
-[borg]:https://www.borgbackup.org/
-[dup]:https://duplicacy.com/
 
-[rirb]:https://github.com/Jwink3101/rirb
+## Design Tenets:
+
+- **Easy to understand, verify, interrogate, and restore**. The backup format is easy to comprehend and can be reverse-engineered simply. No special tools, including dfb itself, are needed to restore (except if using crypt, you need to decrypt it). The format is about as straightforward as possible!
+- **Backup full copies of all files**. All files are full copies stored natively and can be downloaded right away (and manually if needed). This is *less efficient* than block-based tools, but it comes with the advantages noted above.
+- **Restore to any point in time**. You can easily roll back to any point in time in the backup.
+    - **Continuous in time is better than snapshots**. Many tools work off [synthetic] snapshots. Snapshots enable pruning like "keep 1 snapshot per week," but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point in time continuously *and* look at all versions of a specific file (with or without the tool itself to facilitate). Dfb can still be pruned of "prune files older than XYZ days" and/or "prune all but the last N versions."
+- **Support append-only/immutable storage natively**. There is never a need to delete files except for pruning. Nothing ever gets renamed, deleted, or modified.
+
 
 ## Command Help
 
@@ -36,15 +40,15 @@ See [CLI Help](CLI_help.md)
 
 ## File names
 
-When files are backed up, they are renamed to have the date of the backup in the name. Filenames are
+When files are backed up, they are renamed to include the date of the backup in the name. Filenames are:
 
     <filename>.YYYYMMDDhhssmm<optional R or D>.ext
 
-where the time is **_always_ in UTC (Z) time**. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is marked with a tiny file with `D`. If a file is moved, a reference, `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
+where the time is **_always_ in UTC (Z) time**. When a file is modified at the source, it is copied to the remote in the above form. If it is deleted, it is marked with a tiny file with `D`. If a file is moved, a reference `R` is created pointing to the original. If moves are not tracked, then a move will generate a new copy of the file.
 
-There may also be empty directory markers named `.dfbempty.<date>` which are to hold the empty directory on the destination.
+There may also be empty directory markers named `.dfbempty.<date>` which are used to hold the empty directory on the destination.
 
-Directory names are unchanged.
+Directory names remain unchanged.
 
 ### Reference Files
 
@@ -95,12 +99,7 @@ Or, directly execute the config file (it has a custom shebang):
 
 ### Override
 
-The config file can be overridden at the command line by specifying code to evaluate before *and* after the configuration file. In order to control if it is evaluated before *or* after the configuration file, the variables `pre` and `post` are defined. Consider the following example:
-
-    dfb backup --config config.py -o "
-        if post:
-            filter_flags.extend(('--filter','- *.new'))"
-
+The config file can be overridden at the command line by specifying code to evaluate before *and* after the configuration file. In order to control if it is evaluated before *or* after the configuration file, the variables `pre` and `post` are defined.
 
 ## Local Database
 
@@ -120,7 +119,7 @@ When refreshing the database, dfb will also optionally read the logs of all uplo
 
 ## Pruning
 
-You can prune dfb by removing *unneeded* files at snapshots older than a set time. It will keep files older than the specified time if they are still the most recent or are referenced. It can also be told to keep a certain number of versions of specific files.
+You can prune dfb by removing *unneeded* files at snapshots older than a set time. The date specified is the oldest point-in-time where you can restore fully. Files older than that time may still be present as needed.
 
 This pruning strategy is discting from snapshot-based backups where you keep a certain number of snapshots, but offers a more practical approach as it doesn't risk losing important data bewtween snapshots and makes it very easy to understand changes.
 
