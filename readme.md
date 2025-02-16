@@ -7,6 +7,19 @@
 
 # dfb - Dated File Backup
 
+---
+
+**BLUF**:
+
+- **Dated File Backup (dfb)**: Offers full-file, incremental backups with date-appended filenames for easy tracking and retrieval.
+- **Simplicity and Transparency**: Allows manual verification and restoration without needing the tool or extensive documentation, reducing reliance on proprietary systems.
+- **Broad Compatibility**: Supports various storage options via rclone, including WORM/immutable/append-only remotes for enhanced security.
+- **Comparison with Other Solutions**: Unlike complex tools like restic and kopia, dfb avoids error-prone processes and supports seamless cloud backups better than Time Machine or rsnapshot.
+- **Limitations**: Not ideal for large files with frequent small changes due to full copy storage.
+- **Overall Benefit**: Provides a straightforward, reliable backup solution prioritizing simplicity and user control over data.
+
+---
+
 Dated File Backup (dfb) is a simple yet powerful tool for full-file, incremental backups. With dfb, every new or modified file is uploaded with the date appended to the filename, ensuring easy tracking and retrieval. Deleted files are noted with a small dated delete marker, and optionally, renamed files can be referenced. All files are stored as full copies directly on the remote server.
 
 **Simplicity is dfb's greatest strength.** Unlike more complex tools, dfb allows backups to be manually understood, verified, and restored to any point in time without needing the tool itself or a deep understanding of backup formats. The format can be easily deciphered without the need for additional documentation. This transparency ensures peace of mind and reduces reliance on proprietary systems.
