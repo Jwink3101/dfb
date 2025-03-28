@@ -1142,6 +1142,10 @@ def test_missing_hashes():
 def test_metadata(metadata):
     test = testutils.Tester(name="metadata")
     test.config["metadata"] = metadata
+
+    # Make sure macOS isn't cloning as that won't test the metadata.
+    test.config["rclone_flags"] = test.config.get("rclone_flags", [])
+    test.config["rclone_flags"].append("--local-no-clone")
     test.write_config()
 
     uu = 4, 6, 7

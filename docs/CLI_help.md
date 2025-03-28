@@ -1,7 +1,7 @@
 # CLI Help
 
 
-version: `dfb-20250216.0BETA`  
+version: `dfb-20250328.0BETA`  
 
 
 # No Command
@@ -371,18 +371,21 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  -d, --deleted, --del  List deleted files too with '<filename> (DEL)'. Specify twice
-                        to ONLY include deleted files
+  -d, --deleted, --del  List deleted files with '<filename> (DEL)'. Specify twice to
+                        ONLY include deleted files
   --full-path           Show full path when listing subdirs
   -l, --long            Long listing with size, ModTime, path. Specify twice for
-                        versions, total_size, size, ModTime, Timestamp, path.
+                        versions, total_size, size, ModTime, Timestamp, path. If a
+                        file is a reference, the size will be that of the referent
+                        with an "R" appended.
   --list {files,dirs,both}, --list-only {files,dirs,both}
                         Only list files or directories (or dirs). Default 'both'
                         normally or 'files' for --recursive mode.
   -r, --recursive       List all items recursively
   --real-path, --rpath  Print the relevant (based on time settings) real path (rpath)
-                        of file. Specify one to print the real-path a reference file
-                        and twice to print the referent
+                        of file. Specify one to print the real-path of a reference
+                        file and twice to print the referent. Multiple specifications
+                        only matter for reference files.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing

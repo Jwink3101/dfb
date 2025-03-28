@@ -218,8 +218,8 @@ def test_listing():
         "new3.19700101000003.txt",
         "new4.19700101000004.txt",
         "sub1/file.19700101000002D.txt (DEL)",
-        "sub2/file.19700101000002R.txt (DEL)",
-        "sub3/file.19700101000003R.txt (DEL)",
+        "sub2/file.19700101000003D.txt (DEL)",
+        "sub3/file.19700101000004D.txt (DEL)",
         "sub4/file.19700101000004R.txt",
         "untouched.19700101000001.txt",
     }
@@ -853,8 +853,8 @@ def test_tree():
 
 if __name__ == "__main__":
     test_listing()
-    test_del()
-    test_tree()
+    # test_del()
+    # test_tree()
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)

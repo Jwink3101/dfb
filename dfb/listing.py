@@ -203,8 +203,8 @@ def ls(config):
             ts = ts.strftime(f"{STRFTIME_FMT}Z")
 
         path = item["apath"]
-        if args.rpath:  # If it's a reference, we'd prefer ref_rpath
-            if item["isref"] and args.rpath == 1:
+        if args.rpath:  # If it's a reference, we'd prefer ref_rpath if not deleted
+            if item["isref"] and args.rpath == 1 and item["size"] >= 0:
                 path = item["ref_rpath"]
             else:
                 path = item["rpath"]
@@ -220,6 +220,8 @@ def ls(config):
         if item["size"] < 0:
             path = f"{path} (DEL)"
             size = "D"
+        elif item["isref"]:
+            size = f"{size}R"
         table.append([versions, tot_size, size, mtime, ts, path])
 
     if args.long == 0:

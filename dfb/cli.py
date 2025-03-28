@@ -422,7 +422,7 @@ def parse(argv=None, shebanged=False):
         action="count",
         default=0,
         help="""
-            List deleted files too with '<filename> (DEL)'. 
+            List deleted files with '<filename> (DEL)'. 
             Specify twice to ONLY include deleted files""",
     )
     ls.add_argument(
@@ -436,6 +436,8 @@ def parse(argv=None, shebanged=False):
         help="""
             Long listing with size, ModTime, path. 
             Specify twice for versions, total_size, size, ModTime, Timestamp, path.
+            If a file is a reference, the size will be that of the referent with an "R"
+            appended.
             """,
     )
 
@@ -468,8 +470,8 @@ def parse(argv=None, shebanged=False):
         dest="rpath",
         help="""
             Print the relevant (based on time settings) real path (rpath) of file. 
-            Specify one to print the real-path a reference file and twice to print
-            the referent
+            Specify one to print the real-path of a reference file and twice to print
+            the referent. Multiple specifications only matter for reference files.
             """,
     )
 
