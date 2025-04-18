@@ -2,6 +2,10 @@
 
 (newest on top)
 
+## 20250418.0BETA
+
+- Adds "size" field to prune dump.
+
 ## 20250328.0BETA
 
 - Added "R" to long listings of size for references. Cleaned up CLI text.

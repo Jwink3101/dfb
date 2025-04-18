@@ -125,13 +125,19 @@ class Prune:
         cliconfig = self.args
 
         rpaths = (r[0] for r in self.rpaths)
+        rpaths_size = dict(self.rpaths)
 
         if file := cliconfig.dump:
             logger.info(f"Dumping jsonl then exiting")
             try:
                 fp = smart_open(file, "wt") if file != "-" else sys.stdout
                 for rpath in rpaths:
-                    item = {"_V": 1, "_action": "prune", "rpath": rpath}
+                    item = {
+                        "_V": 1,
+                        "_action": "prune",
+                        "rpath": rpath,
+                        "size": rpaths_size.get(rpath, None),
+                    }
                     print(
                         json.dumps(item, ensure_ascii=False, separators=(",", ":")),
                         file=fp,
@@ -345,17 +351,31 @@ class PruneableDFBDST(DFBDST):
         Remove all entries that point to the rpath even if they are references
         """
         db = self.db()
+        item = {"_V": 1, "_action": "prune", "rpath": rpath}
+
         with db:
+            # Get the implicit rowid and then use that for the delete so it only scans
+            # once. rowid is implicit and indexed.
+            row = db.execute(
+                """
+                SELECT rowid,size
+                FROM items
+                WHERE rpath = ?
+                LIMIT 1
+                """,
+                (rpath,),
+            ).fetchone()
+
+            item["size"] = row["size"]
+
             db.execute(
                 """
-                DELETE FROM items 
-                WHERE rpath = ?""",
-                (rpath,),
+                DELETE FROM items
+                WHERE rowid = ?
+                """,
+                (row["rowid"],),
             )
         db.commit()
-        db.close()
-
-        item = {"_V": 1, "_action": "prune", "rpath": rpath}
 
         with self.snap_file.open(mode="at") as fp:
             print(json.dumps(item), file=fp, flush=True)

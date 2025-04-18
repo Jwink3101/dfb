@@ -168,7 +168,8 @@ Prune entries are technically **optional** in the sense that upon refresh, they 
 {
   "_V": 1,
   "_action": "prune",
-  "rpath": "delete.19700101000001.txt"
+  "rpath": "delete.19700101000001.txt",
+  "size": 25
 }
 ```
 This means to **delete** the file `dst:<rpath>` or `dst:delete.19700101000001.txt`. 
