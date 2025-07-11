@@ -1,8 +1,8 @@
-import sys
-import logging
 import json
+import logging
+import sys
 
-from . import apath2rpath, rpath2apath, nowfun
+from . import apath2rpath, nowfun, rpath2apath
 from .utils import timestamp_parser
 
 logger = logging.getLogger(__name__)

@@ -2,14 +2,16 @@
 Unit-like tests
 """
 
-import os, sys, time
+import os
+import sys
+import time
 
 p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
-from dfb.utils import smart_splitext, time2all, head_tail_table, parse_bytes
-from dfb.dstdb import rpath2apath, apath2rpath
+from dfb.dstdb import apath2rpath, rpath2apath
+from dfb.utils import head_tail_table, parse_bytes, smart_splitext, time2all
 
 DATED_SPLIT_TESTS = {
     # Older style names before smart-split then test with smart

@@ -1,9 +1,10 @@
-import os, sys, shutil
-from pathlib import Path
-from textwrap import dedent
 import hashlib
 import logging
-
+import os
+import shutil
+import sys
+from pathlib import Path
+from textwrap import dedent
 
 # 3rd Party
 import pytest

@@ -1,7 +1,7 @@
 import datetime
-import string
-import re
 import logging
+import re
+import string
 
 logger = logging.getLogger(__name__)
 

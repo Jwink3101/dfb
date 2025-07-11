@@ -1,1 +1,2 @@
-# Apparently this can be blank and not need --use-pep517
+[tool.isort]
+profile = "black"

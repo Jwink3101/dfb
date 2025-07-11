@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys, json
-from pathlib import Path
+import json
+import logging
+import os
+import sys
 from collections import defaultdict
 from math import inf
-import logging
+from pathlib import Path
 
+from dfb.dstdb import NoTimestampInNameError
+from dfb.dstdb import rpath2apath as _rpath2apath
 from dfb.timestamps import timestamp_parser
-from dfb.dstdb import rpath2apath as _rpath2apath, NoTimestampInNameError
 
 _r = repr
 

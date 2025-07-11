@@ -1,25 +1,27 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys, shutil
-from pathlib import Path
 import gzip as gz
-import subprocess
 import json
+import os
+import shutil
+import stat
+import subprocess
+import sys
+from pathlib import Path
 from textwrap import dedent
 
 p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
-from dfb.prune import BrokenReferenceError
-
+# testing
+import pytest
 
 # Local
 import testutils
 
-# testing
-import pytest
+from dfb.prune import BrokenReferenceError
 
 
 def test_basic_cases():
@@ -549,6 +551,33 @@ def test_prune_file():
         assert not (test.pwd / "dst" / path).exists()
 
 
+def test_prune_errors():
+    """
+    Handle when the delete doesn't work
+    """
+
+    test = testutils.Tester(name="prune_errors")
+    test.write_config()
+
+    for offset in [1, 3, 5]:
+        test.write_pre("src/file.txt", ".", mode="at")
+        test.backup(offset=offset)
+
+    assert len(list(test.dstdb.snapshot(export=True))) == 3
+
+    # Fail because it was deleted
+    os.unlink("dst/file.19700101000001.txt")
+
+    prune = test.call("prune", "now")  # -v will make it error
+
+    # Make sure the files aren't there
+    assert not os.path.exists("dst/file.19700101000001.txt")
+    assert not os.path.exists("dst/file.19700101000003.txt")
+
+    # ...including in the db
+    assert len(list(test.dstdb.snapshot(export=True))) == 1
+
+
 if __name__ == "__main__":
     test_basic_cases()
     test_moves()
@@ -557,6 +586,7 @@ if __name__ == "__main__":
     test_disable()
     test_basic_versions()
     test_prune_file()
+    test_prune_errors()
 
     print("=" * 50)
     print(" All Passed ".center(50, "="))

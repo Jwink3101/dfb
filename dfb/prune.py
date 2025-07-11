@@ -2,24 +2,23 @@
 Prune
 """
 
-import datetime
-import re
-import sys
 import bisect
-import subprocess
-import shlex
+import datetime
+import gzip as gz
 import json
 import logging
-import gzip as gz
+import re
+import shlex
+import subprocess
+import sys
 from operator import itemgetter
 
 from . import LOCK
-from .utils import human_readable_bytes, smart_open
-from .timestamps import timestamp_parser
 from .dstdb import DFBDST
 from .rclonerc import rcpathjoin
 from .threadmapper import thread_map_unordered as tmap
-
+from .timestamps import timestamp_parser
+from .utils import human_readable_bytes, smart_open
 
 logger = logging.getLogger(__name__)
 
@@ -166,14 +165,21 @@ class Prune:
             try:
                 logger.info(f"Pruning {rpath!r}.")
                 rc.delete((self.config.dst, rpath))
-                return rpath
-            except subprocess.CalledProcessError as EE:
-                logger.error(f"Could not prune {rpath!r}. {EE}")
+            except Exception as EE:
+                logger.error(
+                    f"Could not prune {rpath!r}. " f"Will assume it is deleted. {EE}"
+                )
                 with LOCK:
                     self.errcount += 1
+            return rpath
 
         rpaths = tmap(_delete, rpaths, Nt=self.config.concurrency)
-        rpaths = filter(bool, rpaths)  # Remove errors
+        # Originally we didn't remove the file if there was an error but it's changed
+        # now. First of all, the most likely error is that the file is already missing
+        # so this updates the DB. If not, the worst that happens in that it remains and
+        # goes unnoticed until a refresh. Future dfb versions may be smarter about what
+        # types of errors it handles.
+        # rpaths = filter(bool, rpaths)  # Remove errors
         rpaths = map(self.dstdb.delete_rpath, rpaths)  # on main thread only
         for _ in rpaths:
             pass

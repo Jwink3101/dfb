@@ -1,30 +1,32 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys, shutil
-from pathlib import Path
 import gzip as gz
-import lzma as xz
-import re
-import subprocess
-import json
 import itertools
+import json
+import lzma as xz
+import os
+import re
 import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 from textwrap import dedent
 
 p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
-from dfb.cli import cli
-from dfb.utils import smart_splitext
-from dfb.backup import NoCommonHashError
+# testing
+import pytest
 
 # Local
 import testutils
 
-# testing
-import pytest
+from dfb.backup import NoCommonHashError
+from dfb.cli import cli
+from dfb.utils import smart_splitext
 
 
 @pytest.mark.parametrize("rename_method", ["reference", "copy"])

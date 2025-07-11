@@ -24,20 +24,21 @@ NOTE: rclonerc is a better way to use rclone. Many of these features predate me 
       that API
 """
 
-import os, sys
-import subprocess
 import io
-import tempfile
 import json
-import string
-import warnings
-import types
-import time
 import logging
-from functools import partialmethod, cached_property, partial
+import os
+import string
+import subprocess
+import sys
+import tempfile
+import time
+import types
+import warnings
+from functools import cached_property, partial, partialmethod
 
-from .timestamps import timestamp_parser
 from . import __version__
+from .timestamps import timestamp_parser
 
 logger = logging.getLogger(__name__)
 
@@ -1060,8 +1061,8 @@ def popen_streamer(proc, allow_error=False):
     Yields:
         ('stdout' or 'stderr', line)
     """
-    from threading import Thread
     from queue import Queue
+    from threading import Thread
 
     Q = Queue()
 

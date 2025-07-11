@@ -3,38 +3,38 @@ Main backup object. This will list the source (and reset/list the dest if --refr
 then compare.
 """
 
-import sys, os
-import time
-import json
-import tempfile
-import subprocess
-import shlex
 import atexit
-import shutil
-import queue
+import gzip as gz
+import json
 import logging
 import math
-import gzip as gz
+import os
+import queue
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
 from collections import defaultdict
+from functools import partial
 from textwrap import dedent
 from threading import Thread
-from functools import partial
-
-from . import LOCK, MIN_RCLONE
-from .dstdb import DFBDST, apath2rpath
-from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
-from .threadmapper import ReturnThread, thread_map_unordered as tmap
-from .utils import (
-    star,
-    human_readable_bytes,
-    shell_runner,
-    time_format,
-    listify,
-    smart_open,
-)
 
 # For testing only
-from . import _FAIL
+from . import _FAIL, LOCK, MIN_RCLONE
+from .dstdb import DFBDST, apath2rpath
+from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
+from .threadmapper import ReturnThread
+from .threadmapper import thread_map_unordered as tmap
+from .utils import (
+    human_readable_bytes,
+    listify,
+    shell_runner,
+    smart_open,
+    star,
+    time_format,
+)
 
 logger = logging.getLogger(__name__)
 

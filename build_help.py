@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys, shlex, shutil
+import os
+import shlex
+import shutil
 import subprocess
+import sys
 from pathlib import Path
-
 
 COLUMNS = 88
 

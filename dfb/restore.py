@@ -2,16 +2,17 @@
 Restores
 """
 
-import os, sys
-import subprocess
-import shlex
 import logging
+import os
+import shlex
+import subprocess
+import sys
 
 from . import LOCK
 from .dstdb import DFBDST
 from .rclonerc import rcpathjoin, rcpathsplit
-from .utils import human_readable_bytes, star, listify, shell_header
 from .threadmapper import thread_map_unordered as tmap
+from .utils import human_readable_bytes, listify, shell_header, star
 
 logger = logging.getLogger(__name__)
 

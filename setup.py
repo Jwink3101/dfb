@@ -1,6 +1,9 @@
 #!/usr/bin/env python
-import sys, shutil
-import subprocess, os, re
+import os
+import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 # Read the contents of your README file

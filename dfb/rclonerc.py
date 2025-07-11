@@ -1,29 +1,30 @@
-import urllib.parse
-import json
+import argparse
+import atexit
 import io
-import time
-import signal
-import os, sys
-import re
+import json
+import logging
 import math
-import tempfile
+import os
+import re
+import shlex
+import signal
 import socket
 import subprocess
-import argparse
-import shlex
-import atexit
-import logging
+import sys
+import tempfile
+import time
+import urllib.parse
 from collections import defaultdict
-from functools import partialmethod, cache
-from threading import Thread
+from functools import cache, partialmethod
 from queue import Queue
-
-from .utils import randstr, dictify, listify
-from .timestamps import timestamp_parser
-from .cli import ThrowingArgumentParserError, ThrowingArgumentParser
+from threading import Thread
 
 import requests
 from requests.auth import HTTPBasicAuth
+
+from .cli import ThrowingArgumentParser, ThrowingArgumentParserError
+from .timestamps import timestamp_parser
+from .utils import dictify, listify, randstr
 
 logger = logging.getLogger(__name__)
 serve_logger = logging.getLogger(f"{__name__}-rc-server")

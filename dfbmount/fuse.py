@@ -13,17 +13,16 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-from __future__ import print_function, absolute_import, division
+from __future__ import absolute_import, division, print_function
 
 import ctypes
 import errno
 import logging
 import os
 import warnings
-
 from ctypes.util import find_library
 from platform import machine, system
-from signal import signal, SIGINT, SIG_DFL
+from signal import SIG_DFL, SIGINT, signal
 from stat import S_IFDIR
 from traceback import print_exc
 

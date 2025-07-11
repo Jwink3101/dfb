@@ -1,28 +1,29 @@
 #!/usr/bin/env python
+import json
 import logging
-import os
-
-from errno import EACCES
-from os.path import realpath
-from threading import Lock
-
-from .fuse import FUSE, FuseOSError, Operations, LoggingMixIn
 
 ###########################################
-import os, sys, json, time
+import os
+import sys
+import time
+from errno import EACCES
 from functools import lru_cache
-from threading import Thread
+from os.path import realpath
+from threading import Lock, Thread
+
+from .fuse import FUSE, FuseOSError, LoggingMixIn, Operations
 
 p = os.path.abspath(os.path.dirname(__file__))
 if p not in sys.path:
     sys.path.insert(0, p)
 
+from collections import defaultdict
+
 from dfb import __version__
 from dfb.cli import ISODATEHELP
+from dfb.dstdb import NoTimestampInNameError
+from dfb.dstdb import rpath2apath as _rpath2apath
 from dfb.timestamps import timestamp_parser
-from dfb.dstdb import rpath2apath as _rpath2apath, NoTimestampInNameError
-
-from collections import defaultdict
 
 
 def rpath2apath(rpath):

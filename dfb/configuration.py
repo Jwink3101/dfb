@@ -1,11 +1,13 @@
-import sys, os
-import time
-import tempfile
-import uuid
+import base64
 import copy
-import logging
+import hashlib
 import io
-import hashlib, base64
+import logging
+import os
+import sys
+import tempfile
+import time
+import uuid
 from functools import partial, partialmethod
 from pathlib import Path
 from threading import Lock
@@ -117,7 +119,7 @@ class ConfigError(ValueError):
 
 class Config:
     def __init__(self, configpath, tmpdir=None, verbosity=1, add_params=None):
-        from . import nowfun, __version__, __git_version__
+        from . import __git_version__, __version__, nowfun
 
         self._config = {"_configpath": configpath, "verbosity": verbosity}
         try:

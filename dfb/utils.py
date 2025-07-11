@@ -2,18 +2,19 @@
 Utilities
 """
 
-import os, sys
 import datetime
-import sqlite3
-import random
-import subprocess
-import shlex
-import mimetypes
-import re
 import logging
+import mimetypes
+import os
+import random
+import re
+import shlex
+import sqlite3
+import subprocess
+import sys
 from collections import namedtuple
 
-from .timestamps import timestamp_parser, iso8601_parser
+from .timestamps import iso8601_parser, timestamp_parser
 
 logger = logging.getLogger(__name__)
 

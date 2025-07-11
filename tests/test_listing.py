@@ -1,25 +1,26 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os, sys
-from pathlib import Path
 import gzip as gz
-import subprocess
 import json
+import os
 import shlex
 import shutil
+import subprocess
+import sys
+from pathlib import Path
 from textwrap import dedent
 
 p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
+# testing
+import pytest
+
 # Local
 import testutils
 from testutils import Capture
-
-# testing
-import pytest
 
 
 def test_listing():

@@ -1,19 +1,19 @@
+import json
 import os
 import sys
-import json
 
 p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
-from dfb.cli import cli
+# testing
+import pytest
 
 # Local
 import testutils
 from testutils import Capture
 
-# testing
-import pytest
+from dfb.cli import cli
 
 
 def test_apath2rpath_cli():

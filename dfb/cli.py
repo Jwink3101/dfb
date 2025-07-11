@@ -1,10 +1,11 @@
-import os, sys
 import argparse
 import logging
-from textwrap import dedent
+import os
+import sys
 from functools import partial
+from textwrap import dedent
 
-from . import __version__, __git_version__
+from . import __git_version__, __version__
 
 logger = logging.getLogger(__name__)
 

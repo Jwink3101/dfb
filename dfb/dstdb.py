@@ -2,35 +2,33 @@
 Database of the destination. Includes the tools and methods to refresh it.
 """
 
-import os
-from pathlib import Path
-import sqlite3
-import time
+import gzip as gz
 import io
 import json
 import logging
-import string
+import os
 import shutil
-import gzip as gz
+import sqlite3
+import string
+import time
 from functools import partialmethod
+from pathlib import Path
 from textwrap import dedent, indent
 
-from . import __version__, nowfun, rpath2apath, apath2rpath
-from .utils import (
-    time2all,
-    MyRow,
-    star,
-    listify,
-    smart_open,
-    randstr,
-    smart_splitext,
-    NoTimestampInNameError,
-)
-from .timestamps import timestamp_parser
-from . import rclonerc
+from . import __version__, apath2rpath, nowfun, rclonerc, rpath2apath
 from .rclonerc import IGNORED_FILE_DATA, rcpathjoin
 from .threadmapper import thread_map_unordered as tmap
-
+from .timestamps import timestamp_parser
+from .utils import (
+    MyRow,
+    NoTimestampInNameError,
+    listify,
+    randstr,
+    smart_open,
+    smart_splitext,
+    star,
+    time2all,
+)
 
 logger = logging.getLogger(__name__)
 

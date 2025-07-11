@@ -2,6 +2,12 @@
 
 (newest on top)
 
+## 20250710.0BETA
+
+- Updated readme
+- *Bug Fix*: Fix handling of errors related to pruning already-deleted files.
+- *Code*: Applied `isort` to all files
+
 ## 20250418.0BETA
 
 - Adds "size" field to prune dump.

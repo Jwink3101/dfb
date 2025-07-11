@@ -1,50 +1,34 @@
 ***
 
-*Warning*: This tool is still in beta but (a) I've been using it heavily for 1+ years without problems, (b) the design is such that even without it, you can get all of your files back, and (c) more testers are good! Use at your own risk but please also provide feedback
+> [!WARNING] 
+> This tool is still in beta but (a) I've been using it heavily for 1+ years without problems, (b) the design is such that even without it, you can get all of your files back, and (c) more testers are good! Use at your own risk but please also provide feedback
 
 ***
 
-
 # dfb - Dated File Backup
 
----
+**Dated File Backup (dfb)** performs full-file, incremental backups by uploading new and modified files with the date appended, and using markers for deleted files. It can also optionally record references to renamed files. **It creates simple, reliable, self-documenting, portable, durable, and auditable backups.** It does not rely on any proprietary or complex formats or tools, and backups can be easily understood and restored manually. It uses [`rclone`](https://rclone.org/) to connect to and from a variety of cloud providers, offering additional utility such as encryption and enabling backups of cloud storage. However, due to its simple, full-file nature, it is not ideal for large files with frequent small changes.
 
-**BLUF**:
+Many popular backup tools — such as [macOS Time Machine][tm], [rsnapshot][rsnap], or `rsync` with `--link-dest` ([example][rs]) — work well for local snapshots but often lack robust cloud support and portability. Tools like [restic][restic] and [kopia][kopia] offer greater efficiency through deduplication and compression, but rely on complex tooling, opaque formats, and can be difficult to audit or restore without the original software.
 
-- **Dated File Backup (dfb)**: Offers full-file, incremental backups with date-appended filenames for easy tracking and retrieval.
-- **Simplicity and Transparency**: Allows manual verification and restoration without needing the tool or extensive documentation, reducing reliance on proprietary systems.
-- **Broad Compatibility**: Supports various storage options via rclone, including WORM/immutable/append-only remotes for enhanced security.
-- **Comparison with Other Solutions**: Unlike complex tools like restic and kopia, dfb avoids error-prone processes and supports seamless cloud backups better than Time Machine or rsnapshot.
-- **Limitations**: Not ideal for large files with frequent small changes due to full copy storage.
-- **Overall Benefit**: Provides a straightforward, reliable backup solution prioritizing simplicity and user control over data.
+**dfb offers a simpler, more transparent approach:**
 
----
+* **Straightforward full-copy backups** — new and modified files are stored with date-tagged filenames
+* **No proprietary formats** — everything is human-readable and restorable with basic tools
+* **Cloud-ready** — uses `rclone` to support many storage providers, with optional encryption 🔐. Can also support immutable/WORM/append-only storage.
+* **Reliable and auditable** — no hidden indexes, no fragile snapshots, no surprises
 
-Dated File Backup (dfb) is a simple yet powerful tool for full-file, incremental backups. With dfb, every new or modified file is uploaded with the date appended to the filename, ensuring easy tracking and retrieval. Deleted files are noted with a small dated delete marker, and optionally, renamed files can be referenced. All files are stored as full copies directly on the remote server.
+> [!CAUTION] 
+> dfb is not ideal for large files with frequent small changes, as it stores full copies.
 
-**Simplicity is dfb's greatest strength.** Unlike more complex tools, dfb allows backups to be manually understood, verified, and restored to any point in time without needing the tool itself or a deep understanding of backup formats. The format can be easily deciphered without the need for additional documentation. This transparency ensures peace of mind and reduces reliance on proprietary systems.
+Choose **dfb** if you value **clarity, resilience, and control** over aggressive storage optimization.
 
-Utilizing rclone as an interface to both source and destination, dfb supports a wide range of storage options, enabling seamless cloud-to-cloud backups. Additionally, it natively supports WORM/immutable/append-only destination remotes, enhancing data security.
-
-Many popular backup solutions, such as [macOS Time Machine][tm], [rsnapshot][rsnap], and rsync with `--link-dest` ([example][rs]), have similar or even greater limitations, particularly in cloud storage support. Block-based, cloud-native tools like [restic][restic] and [kopia][kopia] offer efficiency and deduplication but are often more error-prone, complex, and difficult to restore or verify without the original tool.
-
-With dfb, there is no need for special initial backups or periodic snapshots, simplifying the backup process. This straightforward approach reduces the risk of errors and ensures that backups are always accessible and verifiable.
-
-Choose dfb for a backup solution that prioritizes simplicity, transparency, and reliability, giving you full control over your data without the complexities of more sophisticated systems. However, dfb may not be ideal for large files with frequent small changes, as it stores full copies. For most needs, dfb provides a reliable, transparent backup solution without the complexities of more sophisticated systems.
 
 [tm]:https://support.apple.com/en-us/HT201250
 [rsnap]:https://rsnapshot.org/
 [rs]:https://web.archive.org/web/20230830063440/https://digitalis.io/blog/linux/incremental-backups-with-rsync-and-hard-links/
 [restic]:https://restic.net/
 [kopia]:https://kopia.io/
-
-## Design Tenets:
-
-- **Easy to understand, verify, interrogate, and restore**. The backup format is easy to comprehend and can be reverse-engineered simply. No special tools, including dfb itself, are needed to restore (except if using crypt, you need to decrypt it). The format is about as straightforward as possible!
-- **Backup full copies of all files**. All files are full copies stored natively and can be downloaded right away (and manually if needed). This is *less efficient* than block-based tools, but it comes with the advantages noted above.
-- **Restore to any point in time**. You can easily roll back to any point in time in the backup.
-    - **Continuous in time is better than snapshots**. Many tools work off [synthetic] snapshots. Snapshots enable pruning like "keep 1 snapshot per week," but that is a risky approach. What if you need some file that falls in that range? Or what if you don't know when you modified a file? Instead, dfb can roll back to any point in time continuously *and* look at all versions of a specific file (with or without the tool itself to facilitate). Dfb can still be pruned of "prune files older than XYZ days" and/or "prune all but the last N versions."
-- **Support append-only/immutable storage natively**. There is never a need to delete files except for pruning. Nothing ever gets renamed, deleted, or modified.
 
 
 ## Command Help
@@ -75,7 +59,18 @@ The only exception to full-file backups are references. References write JSON da
 
 Note that references *are* considered and guarded when pruning (with associated tests). Be careful when pruning manually so as to not break a reference file.
 
+The reference file is "ground truth" but some additional files are also backed up to help speed up refreshes without having to read every reference file.
+
 ## Install
+
+From PyPI:
+
+    $ pip install dfb
+    
+or
+
+    $ pip install -U dfb
+
 
 Just install from github directly.
 
@@ -182,3 +177,4 @@ You can, of course, do it all manually but (a) it won't check/delete references 
 - Even with logs of files using source data, restore *always* directly uses the remote. Future versions may offer a secondary method to restore that information for certain remotes.
     - Example: If the remote doesn't support mtime, even if mtime is used for backups based on the logs and local database, restore will not restore mtime.
 - Deletes are marked with a 3 byte file (just ASCII encoded `DEL`). This is smaller than most block sizes so they take more space on a local filesystem.
+- It is assumed that the source does not change from when listing to backing up. If a file is deleted in the iterim, it could cause an error. If it is modified, there may be a future false-positive (which is a safe scenario).

@@ -1,6 +1,7 @@
-import os, sys
 import argparse
 import logging
+import os
+import sys
 
 __version__ = "20240102.0"
 

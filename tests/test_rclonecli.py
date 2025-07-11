@@ -1,8 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import os, sys, shutil, subprocess
+import hashlib
+import io
+import os
+import shutil
+import subprocess
+import sys
 from textwrap import dedent
-import hashlib, io
 
 # 3rd Party
 import pytest

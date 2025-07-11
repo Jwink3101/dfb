@@ -2,19 +2,20 @@
 CLI Listing-type functions
 """
 
-import os, sys
-import shutil
 import json
-import operator
 import logging
+import operator
+import os
 import shlex
+import shutil
+import sys
 from textwrap import dedent
 
 from . import LOCK, time2all
 from .dstdb import DFBDST
-from .utils import tabulate, human_readable_bytes, head_tail_table, smart_open
-from .timestamps import timestamp_parser
 from .rclonerc import rcpathjoin
+from .timestamps import timestamp_parser
+from .utils import head_tail_table, human_readable_bytes, smart_open, tabulate
 
 logger = logging.getLogger(__name__)
 
