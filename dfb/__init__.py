@@ -8,7 +8,7 @@ from .utils import apath2rpath, rpath2apath, time2all
 
 logger = logging.getLogger(__name__)
 
-__version__ = "20250710.0BETA"
+__version__ = "20250711.0BETA"
 MIN_RCLONE = 1, 63, 0
 
 

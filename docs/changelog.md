@@ -2,6 +2,11 @@
 
 (newest on top)
 
+## 20250711.0BETA
+
+- Improved bug fix from last version.
+- Adds $DFB_DEBUG_RAISE_EXCEPTION environment variable to help debug by raising exception even if not in verbose mode
+
 ## 20250710.0BETA
 
 - Updated readme

@@ -372,16 +372,20 @@ class PruneableDFBDST(DFBDST):
                 (rpath,),
             ).fetchone()
 
-            item["size"] = row["size"]
+            try:
+                item["size"] = row["size"]
 
-            db.execute(
-                """
-                DELETE FROM items
-                WHERE rowid = ?
-                """,
-                (row["rowid"],),
-            )
-        db.commit()
+                db.execute(
+                    """
+                    DELETE FROM items
+                    WHERE rowid = ?
+                    """,
+                    (row["rowid"],),
+                )
+            except:
+                # Likely means that there was not item that matched but this is more robust
+                # than just checking
+                pass
 
         with self.snap_file.open(mode="at") as fp:
             print(json.dumps(item), file=fp, flush=True)

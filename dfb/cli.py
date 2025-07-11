@@ -1108,7 +1108,10 @@ def _cli(cliconfig):
         except:
             logging.error("Saving logs and running fail_shell didn't work")
 
-        if config.verbosity > 1:
+        if (
+            config.verbosity > 1
+            or os.environ.get("DFB_DEBUG_RAISE_EXCEPTION", "").lower() == "true"
+        ):
             raise
 
         if not _TESTMODE:
