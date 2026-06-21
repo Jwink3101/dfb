@@ -17,6 +17,7 @@ os.chdir(os.path.dirname(__file__))
 
 commands = """\
 init
+mount
 backup
 refresh
 restore-dir
@@ -30,11 +31,14 @@ prune
 summary
 advanced
 advanced dbimport
+advanced lsjson-import
+advanced refresh-refs
 advanced prune-file
 advanced timestamp-include-filters
 utils
 utils apath2rpath
 utils rpath2apath
+utils tsconv
 """
 
 commands = [l.strip() for l in commands.split("\n") if l.strip()]
@@ -45,33 +49,29 @@ helpmd = [
 ]
 
 ver = (
-    subprocess.check_output([sys.executable, "dfb.py", "version"], env=env)
+    subprocess.check_output([sys.executable, "-m", "dfb", "version"], env=env)
     .strip()
     .decode()
 )
 pyver = subprocess.check_output([sys.executable, "--version"], env=env).strip().decode()
-helpmd.append(
-    f"""
+helpmd.append(f"""
 version: `{ver}`  
-"""
-)
+""")
 
 for command in commands:
     command = command or ""  # sill Falsy but can be used later to extend
     name = command or "No Command"
     helpmd.append(f"# {name}")
 
-    cmd = [sys.executable, "dfb.py", *shlex.split(command), "--help"]
+    cmd = [sys.executable, "-m", "dfb", *shlex.split(command), "--help"]
 
     help = subprocess.check_output(cmd, env=env)
-    help = help.decode().replace("usage: dfb.py", "usage: dfb")
+    help = help.decode().replace("usage: __main__.py", "usage: dfb")
 
-    helpmd.append(
-        f"""
+    helpmd.append(f"""
 ```text
 {help}
-```"""
-    )
+```""")
 
 with open("docs/CLI_help.md", "wt") as f:
     f.write("\n\n".join(helpmd))

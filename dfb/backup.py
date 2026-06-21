@@ -145,7 +145,11 @@ class Backup:
             sthread = ReturnThread(target=self.list_src, kwargs=kwargs).start()
             dthread = ReturnThread(
                 target=self.dstdb.reset,
-                kwargs=kwargs | {"use_snapshots": config.cliconfig.use_snapshots},
+                kwargs=kwargs
+                | {
+                    "use_snapshots": config.cliconfig.use_snapshots,
+                    "refresh_references": config.cliconfig.refresh_references,
+                },
             ).start()
             source_files = sthread.join()
             dthread.join()
@@ -458,9 +462,10 @@ class Backup:
 
         def _apath2file(apath):
             ts = self.config.now.ts
+            fmt = self.config.filename_timestamp_format
 
             file = self.src_files[apath].copy()
-            file["rpath"] = rpath = apath2rpath(file["apath"], ts)
+            file["rpath"] = rpath = apath2rpath(file["apath"], ts, fmt=fmt)
             file["timestamp"] = ts
             file["dstinfo"] = False  # Since this is coming from the source
             return file
@@ -532,6 +537,7 @@ class Backup:
         # Moves are already paired as original_dfile,moved_sfile
         def _build_new_file(original_dfile, moved_sfile):
             ts = self.config.now.ts
+            fmt = self.config.filename_timestamp_format
 
             new = original_dfile.copy()
             new.update(moved_sfile)
@@ -539,7 +545,7 @@ class Backup:
             new["original"] = original_dfile["apath"]
             new["isref"] = True
             new["rpath"] = original_dfile["rpath"]
-            new["ref_rpath"] = apath2rpath(new["apath"], ts, flag="R")
+            new["ref_rpath"] = apath2rpath(new["apath"], ts, flag="R", fmt=fmt)
             new["timestamp"] = ts
             new["dstinfo"] = False  # Since this is coming from the source
             return new
@@ -596,12 +602,13 @@ class Backup:
 
         def _build_copiedfile(original_dfile, moved_sfile):
             ts = self.config.now.ts
+            fmt = self.config.filename_timestamp_format
 
             new = original_dfile.copy()
             new.update(moved_sfile)
 
             new["original"] = original_dfile["apath"]
-            new["rpath"] = apath2rpath(new["apath"], ts)
+            new["rpath"] = apath2rpath(new["apath"], ts, fmt=fmt)
             new["source_rpath"] = original_dfile["rpath"]
             new["timestamp"] = ts
             new["isref"] = False
@@ -658,9 +665,10 @@ class Backup:
 
         def _apath2file(apath):
             ts = self.config.now.ts
+            fmt = self.config.filename_timestamp_format
 
             file = self.dst_files[apath].copy()
-            file["rpath"] = rpath = apath2rpath(file["apath"], ts, flag="D")
+            file["rpath"] = rpath = apath2rpath(file["apath"], ts, flag="D", fmt=fmt)
             file["timestamp"] = ts
             file["dstinfo"] = False  # Since this is coming from the source
             file["size"] = -1
@@ -742,20 +750,27 @@ class Backup:
         )
 
         stats.append(f"Errors: {self.errcount}")
-        select = """
+        current_select = """
+            SUM(CASE 
+                WHEN size >= 0
+                THEN size ELSE 0 END) 
+            AS totsize,
+            COUNT(size) as num
+            """
+        stored_select = """
             SUM(CASE 
                 WHEN (size >= 0 AND (isref IS NULL OR isref = 0) )
                 THEN size ELSE 0 END) 
             AS totsize,
             COUNT(size) as num
             """
-        cur = self.dstdb.snapshot(select=select).fetchone()
+        cur = self.dstdb.snapshot(select=current_select).fetchone()
         tot = cur["totsize"] or 0
         num, units = human_readable_bytes(tot)
         s = "s" if cur["num"] != 1 else ""
         stats.append(f"Current {cur['num']} file{s} ({num:0.2f} {units})")
 
-        tot = self.dstdb.db().execute(f"SELECT {select} FROM items").fetchone()
+        tot = self.dstdb.execute(f"SELECT {stored_select} FROM items").fetchone()
         num, units = human_readable_bytes(tot["totsize"])
         s = "s" if tot["num"] != 1 else ""
         stats.append(f"Total {tot['num']} file{s} ({num:0.2f} {units})")

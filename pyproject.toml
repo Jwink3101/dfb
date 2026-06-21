@@ -1,2 +1,42 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dfb"
+dynamic = ["version"]
+description = "Dated File Backup"
+readme = "readme.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "Justin Winokur", email = "Jwink3101@users.noreply.github.com" },
+]
+dependencies = [
+  "requests",
+]
+
+[project.urls]
+Homepage = "https://github.com/Jwink3101/dfb/"
+
+[project.optional-dependencies]
+mount = ["mfusepy"]
+
+[project.scripts]
+dfb = "dfb.cli:cli"
+dfbshebanged = "dfb.cli:clishebang"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["dfb*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "dfb.__version__" }
+
 [tool.isort]
 profile = "black"
+
+[tool.black]
+target-version = ["py313"]

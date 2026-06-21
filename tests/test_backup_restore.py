@@ -29,6 +29,69 @@ from dfb.cli import cli
 from dfb.utils import smart_splitext
 
 
+def test_base36_epoch_filename_format():
+    test = testutils.Tester(name="base36_epoch_filename_format")
+    test.config["filename_timestamp_format"] = "base36-epoch"
+    test.config["renames"] = "mtime"
+    test.write_config()
+
+    test.write_pre("src/file.txt", "v1")
+    test.backup(offset=1)
+
+    assert Path("dst/file.00000001.txt").read_text() == "v1"
+
+    test.move("src/file.txt", "src/moved.txt")
+    test.backup(offset=3)
+
+    ref = Path("dst/moved.00000003R.txt")
+    assert ref.exists()
+    assert json.loads(ref.read_text()) == {"ver": 2, "rel": "file.00000001.txt"}
+
+    test.config["filename_timestamp_format"] = "datetag"
+    test.write_config()
+    test.write_pre("src/next.txt", "v2")
+    test.backup(offset=5)
+
+    assert Path("dst/next.19700101000005.txt").read_text() == "v2"
+    snap = {dict(item)["apath"] for item in test.remote_snapshot(before=6)}
+    assert {"moved.txt", "next.txt"} <= snap
+
+    test.call("snapshot", "--output", "pre_refresh.jsonl")
+    test.call("refresh")
+    test.call("snapshot", "--output", "post_refresh.jsonl")
+
+    with open("pre_refresh.jsonl") as fp:
+        pre = [json.loads(line) for line in fp]
+    with open("post_refresh.jsonl") as fp:
+        post = [json.loads(line) for line in fp]
+
+    keep = {"rpath", "apath", "timestamp", "size", "ref_rpath"}
+    pre = [{k: v for k, v in item.items() if k in keep} for item in pre]
+    post = [{k: v for k, v in item.items() if k in keep} for item in post]
+    assert {frozenset(item.items()) for item in pre} == {
+        frozenset(item.items()) for item in post
+    }
+
+    test.call("refresh", "-vv", "--no-use-snapshot")
+    log = test.logs[-1][0]
+    assert "Reference 'moved.00000003R.txt' is v2" in log
+
+
+def test_current_stats_count_reference_moves():
+    test = testutils.Tester(name="current_stats_count_reference_moves")
+    test.config["renames"] = "mtime"
+    test.config["rename_method"] = "reference"
+    test.write_config()
+
+    test.write_pre("src/file.txt", "123456")
+    test.backup(offset=1)
+    test.move("src/file.txt", "src/moved.txt")
+    test.backup(offset=3)
+
+    log = test.logs[-1][0]
+    assert "Current 1 file (6.00 B)" in log
+
+
 @pytest.mark.parametrize("rename_method", ["reference", "copy"])
 def test_main(rename_method):
     test = testutils.Tester(name="main")
@@ -228,47 +291,12 @@ def test_main(rename_method):
         assert miss_rem - {"skip.exc", "mod_same-size-mtime.txt"} == set()
         assert miss_loc - {"mod_same-size-mtime.txt"} == set()
 
-    # ## Do restore scripts match?
-    #
-    # Same as above but using the restore script
-
-    for ts, loc in test.backup_local_files.items():
-        restore_dir = str(test.pwd / f"script_ts{ts}")
-        restore_script = str(test.pwd / f"script_ts{ts}.sh")
-        test.call(
-            "restore",
-            "--at",
-            f"u{ts+0.1}",
-            restore_dir,
-            "--shell-script",
-            restore_script,
-        )
-        subprocess.check_call(["bash", restore_script])
-
-        rem = test.local_files(restore_dir)
-
-        miss_rem = {
-            dict(a)["apath"] for a in loc - rem
-        }  # Just the paths, but the whole thing has to agree
-        miss_loc = {dict(a)["apath"] for a in rem - loc}  # ...
-
-        assert miss_rem - {"skip.exc", "mod_same-size-mtime.txt"} == set()
-        assert miss_loc - {"mod_same-size-mtime.txt"} == set()
-
     # ## Misc
     #
     # just to test some code paths
     test.call("restore-file", "sub/move.txt", ".", "--dry-run", "--at", "u1")
     test.call("restore-file", "sub/move.txt", ".", "--at", "1970-01-01 00:00:01Z")
-    test.call(
-        "restore-file",
-        "sub/move.txt",
-        "-",
-        "--at",
-        "1970-01-01 00:00:01Z",
-        "--shell-script",
-        "-",
-    )
+    test.call("restore-file", "sub/move.txt", "-", "--at", "1970-01-01 00:00:01Z")
 
     out = test.ls("-d", "--after", "u4", "--no-header")
     items = {l.strip() for l in out.split("\n") if l.strip()}
@@ -291,22 +319,18 @@ def test_shell():
     # Configure each of the shell types. Need two tries...
 
     # +
-    test.config["pre_shell"] = dedent(
-        """\
+    test.config["pre_shell"] = dedent("""\
             echo PRESHELL
             echo PWD = $PWD
-            echo CONFIGDIR = $CONFIGDIR"""
-    )
+            echo CONFIGDIR = $CONFIGDIR""")
     test.config["post_shell"] = [
         "python",
         "-c",
-        dedent(
-            """\
+        dedent("""\
         print("Post Shell")
         import os,sys
         print(f"{os.getcwd() = }")
-        sys.exit(10)"""
-        ),
+        sys.exit(10)"""),
     ]
 
     test.config["stop_on_shell_error"] = False
@@ -339,15 +363,13 @@ def test_shell():
         cmd=[
             "python",
             "-c",
-            dedent(
-                """\
+            dedent("""\
                 import os
                 print(f"{os.getcwd() = }")
                 print(f"{os.environ.get('SHELL_TEST','FAIL') = }")
                 print(f"{os.environ.get('CONFIGDIR','FAIL') = }")
                 print(f"{os.environ.get('STATS','FAIL') = }")
-                """
-            ),
+                """),
         ],
         shell=False,
         cwd=os.path.expanduser("~/"),
@@ -708,8 +730,7 @@ def test_override():
     test.write_pre("src/file1.txt", "12")
     test.backup(
         "-o",
-        dedent(
-            """\
+        dedent("""\
         if pre:
             print('one PRE')
             try:
@@ -721,8 +742,7 @@ def test_override():
         if post:
             print('one POST')
             print(f"{newval = }")
-        """
-        ),
+        """),
         offset=3,
     )
     log = test.logs[-1][0]
@@ -1102,6 +1122,150 @@ def test_snapshots():
         assert (test.pwd / "dst/.dfb/snapshots/2009/02/20090213233130Z" / ff).exists()
 
 
+def test_dbimport_lsjson():
+    test = testutils.Tester(name="dbimport_lsjson")
+    test.config["renames"] = "mtime"
+    test.config["rename_method"] = "reference"
+    test.write_config()
+
+    test.write_pre("src/file1.txt", "one")
+    test.backup(offset=1)
+    test.move("src/file1.txt", "src/sub/file1.txt")
+    test.backup(offset=3)
+
+    # Build expected state from a normal refresh path.
+    test.call("refresh")
+    test.call("snapshot", "--output", "expected.jsonl", "--export")
+
+    # Build an lsjson listing and import from it.
+    lsjson = list(
+        test.dst_rclone.listremote(
+            mimetype=False,
+            modtime=True,
+            hashes=True,
+            only="files",
+            epoch_time=True,
+            filters=["- **/.swap.*", "- /.dfb/**"],
+        )
+    )
+    with open("listing.lsjson", "wt") as fp:
+        json.dump(lsjson, fp)
+
+    test.call("advanced", "lsjson-import", "--reset", "listing.lsjson")
+
+    with test.dstdb.db() as db:
+        unresolved = db.execute("""
+            SELECT COUNT(*) AS n
+            FROM items
+            WHERE isref = 2
+            """).fetchone()["n"]
+    assert unresolved == 0
+
+    test.call("snapshot", "--output", "actual.jsonl", "--export")
+    keys = ["rpath", "apath", "timestamp", "size", "isref", "ref_rpath"]
+
+    with open("expected.jsonl") as fp:
+        expected = [json.loads(line) for line in fp]
+    expected = {frozenset((k, row.get(k)) for k in keys) for row in expected}
+
+    with open("actual.jsonl") as fp:
+        actual = [json.loads(line) for line in fp]
+    actual = {frozenset((k, row.get(k)) for k in keys) for row in actual}
+
+    assert actual == expected
+
+
+def test_dbimport_lsjson_no_refresh_refs():
+    test = testutils.Tester(name="dbimport_lsjson_no_refresh_refs")
+    test.config["renames"] = "mtime"
+    test.config["rename_method"] = "reference"
+    test.write_config()
+
+    test.write_pre("src/file1.txt", "one")
+    test.backup(offset=1)
+    test.move("src/file1.txt", "src/sub/file1.txt")
+    test.backup(offset=3)
+
+    lsjson = list(
+        test.dst_rclone.listremote(
+            mimetype=False,
+            modtime=True,
+            hashes=True,
+            only="files",
+            epoch_time=True,
+            filters=["- **/.swap.*", "- /.dfb/**"],
+        )
+    )
+    with open("listing.lsjson", "wt") as fp:
+        json.dump(lsjson, fp)
+
+    test.call(
+        "advanced",
+        "lsjson-import",
+        "--reset",
+        "--no-refresh-references",
+        "listing.lsjson",
+    )
+
+    with test.dstdb.db() as db:
+        unresolved = db.execute(
+            "SELECT COUNT(*) AS n FROM items WHERE isref = 2"
+        ).fetchone()["n"]
+    assert unresolved > 0
+
+
+@pytest.mark.parametrize("filename_timestamp_format", ["datetag", "base36-epoch"])
+def test_refresh_refs(filename_timestamp_format):
+    test = testutils.Tester(name=f"refresh_refs_{filename_timestamp_format}")
+    test.config["renames"] = "mtime"
+    test.config["rename_method"] = "reference"
+    test.config["filename_timestamp_format"] = filename_timestamp_format
+    test.write_config()
+
+    test.write_pre("src/file1.txt", "one")
+    test.backup(offset=1)
+    test.move("src/file1.txt", "src/sub/file1.txt")
+    test.backup(offset=3)
+    test.call("refresh", "--no-use-snapshots", "--no-refresh-references")
+
+    with test.dstdb.db() as db:
+        unresolved = db.execute(
+            "SELECT COUNT(*) AS n FROM items WHERE isref = 2"
+        ).fetchone()["n"]
+    assert unresolved > 0
+
+    test.call("refresh", "--no-use-snapshots", "--refresh-references")
+
+    with test.dstdb.db() as db:
+        db.execute("""
+            UPDATE items
+            SET rpath = ref_rpath, ref_rpath = NULL, isref = 2
+            WHERE isref = 1
+            """)
+
+    with test.dstdb.db() as db:
+        unresolved = db.execute(
+            "SELECT COUNT(*) AS n FROM items WHERE isref = 2"
+        ).fetchone()["n"]
+    assert unresolved > 0
+
+    test.call("advanced", "refresh-refs", "--no-use-snapshots")
+
+    with test.dstdb.db() as db:
+        unresolved = db.execute(
+            "SELECT COUNT(*) AS n FROM items WHERE isref = 2"
+        ).fetchone()["n"]
+    assert unresolved == 0
+
+    test.call("advanced", "refresh-refs", "--use-snapshots")
+
+    with test.dstdb.db() as db:
+        unresolved = db.execute(
+            "SELECT COUNT(*) AS n FROM items WHERE isref = 2"
+        ).fetchone()["n"]
+    assert unresolved == 0
+
+
 def test_missing_hashes():
     test = testutils.Tester(name="missing_hashes")
     test.config["compare"] = "hash"
@@ -1164,7 +1328,6 @@ def test_metadata(metadata):
     # This is slow so I comment it out but it has been tested and I can come back to it.
     # restore_dir = str(test.pwd / "res2")
     # restore_script = str(test.pwd / "res2.sh")
-    # test.call("restore","--at","u1.1",restore_dir,"--shell-script",restore_script)
     # subprocess.check_call(["bash", restore_script])
 
     # Verify the src too just to be complete
@@ -1183,6 +1346,34 @@ def test_metadata(metadata):
         assert correct == n
     else:
         assert correct < n
+
+
+def test_restore_metadata_source():
+    test = testutils.Tester(name="restore_metadata_source")
+    test.config["metadata"] = True
+    test.config["restore_metadata_source"] = True
+    test.config["restore_metadata_source_live"] = "always"
+
+    # Make sure local-to-local copies do not clone metadata outside of rclone handling.
+    test.config["rclone_flags"] = test.config.get("rclone_flags", [])
+    test.config["rclone_flags"].append("--local-no-clone")
+    test.write_config()
+
+    test.write_pre("src/file.txt", "file")
+    os.chmod("src/file.txt", 0o640)
+
+    test.backup(offset=1)
+
+    # Change the restore-copy source metadata on the backed-up object itself. If the
+    # single restore copy call keeps live metadata enabled, MetadataSet from the DB row
+    # must still win over this changed value.
+    os.chmod("dst/file.19700101000001.txt", 0o777)
+
+    restore_dir = test.pwd / "res"
+    test.call("restore", "--at", "u1.1", str(restore_dir))
+
+    restored_mode = os.stat(restore_dir / "file.txt").st_mode
+    assert oct(restored_mode).endswith("640")
 
 
 def test_dump():
@@ -1362,26 +1553,22 @@ def test_empty_dirs():
     test.backup("-v", offset=3)
 
     # Test both now and past
-    assert test.tree("--at", "u2") == dedent(
-        """\
+    assert test.tree("--at", "u2") == dedent("""\
         /
         ├── empty/
         │   └── .dfbempty
         └── hassub/
             └── subdir/
                 └── .dfbempty
-        """
-    )
-    assert test.tree() == dedent(
-        """\
+        """)
+    assert test.tree() == dedent("""\
         /
         ├── empty/
         │   └── file.txt
         └── hassub/
             └── subdir_moved/
                 └── .dfbempty
-        """
-    )
+        """)
 
     files = (os.path.relpath(f, "dst") for f in testutils.tree("dst", hidden=True))
     files = {f for f in files if not f.startswith(".dfb/")}
@@ -1469,6 +1656,3 @@ if __name__ == "__main__":
     print("=" * 50)
     print(" All Passed ".center(50, "="))
     print("=" * 50)
-
-    #     #test_shell_scripts('reference')
-    #     #test_shell_scripts('copy')

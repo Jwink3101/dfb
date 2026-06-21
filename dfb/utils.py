@@ -19,6 +19,10 @@ from .timestamps import iso8601_parser, timestamp_parser
 logger = logging.getLogger(__name__)
 
 tsrep = namedtuple("timestamps", ("ts", "dt", "obj", "pretty"))
+BASE36_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
+BASE36_EPOCH_WIDTH = 8
+BASE36_EPOCH_MAX = 36**BASE36_EPOCH_WIDTH - 1
+TIMESTAMP_FORMATS = {"datetag", "base36-epoch"}
 
 
 class NoTimestampInNameError(ValueError):
@@ -451,7 +455,7 @@ def smart_splitext(file):
     return os.path.join(parent, stem), ext
 
 
-def rpath2apath(rpath):
+def rpath2apath(rpath, *, preferred="datetag"):
     """
     Convert the rpath to the apath with the time and flag.
 
@@ -471,7 +475,7 @@ def rpath2apath(rpath):
     base_w_tag, ext = smart_splitext(rname)
     base, tag = os.path.splitext(base_w_tag)
     try:
-        ts, flag = parse_dateflag(tag)
+        ts, flag, _ = parse_timestamp_tag(tag, preferred=preferred)
         apath = os.path.join(parent, f"{base}{ext}")
         return apath, ts, flag
     except ValueError:
@@ -480,7 +484,7 @@ def rpath2apath(rpath):
     # Case 2: The extension is the end.
     aname, tag = os.path.splitext(rname)
     try:
-        ts, flag = parse_dateflag(tag)
+        ts, flag, _ = parse_timestamp_tag(tag, preferred=preferred)
         apath = os.path.join(parent, aname)
         return apath, ts, flag
     except ValueError:
@@ -498,23 +502,113 @@ re_datetag = re.compile(
     ([01][0-9]|2[0-3])       # Match two digits for the hour (00-23)
     ([0-5][0-9])             # Match two digits for the minutes (00-59)
     ([0-5][0-9])             # Match two digits for the seconds (00-59)
-    (R|D)?                   # Optionally match an "R" or "D" at the end
+    (R|D|r|d)?               # Optionally match an "R" or "D" at the end
     $                        # End of the string
     """,
     re.VERBOSE,
 )
 
 
-def parse_dateflag(ts):
+def validate_timestamp_format(fmt):
+    if fmt not in TIMESTAMP_FORMATS:
+        raise ValueError(f"Unsupported timestamp format {fmt!r}")
+    return fmt
+
+
+def alternate_timestamp_format(fmt):
+    validate_timestamp_format(fmt)
+    return "base36-epoch" if fmt == "datetag" else "datetag"
+
+
+def encode_base36_epoch(ts):
+    ts = int(ts)
+    if ts < 0:
+        raise ValueError("base36-epoch requires a non-negative epoch second")
+    if ts > BASE36_EPOCH_MAX:
+        raise ValueError(f"base36-epoch exceeds {BASE36_EPOCH_WIDTH} characters")
+
+    if ts == 0:
+        return "0" * BASE36_EPOCH_WIDTH
+
+    digits = []
+    while ts:
+        ts, rem = divmod(ts, 36)
+        digits.append(BASE36_ALPHABET[rem])
+
+    token = "".join(reversed(digits))
+    return token.rjust(BASE36_EPOCH_WIDTH, "0")
+
+
+def decode_base36_epoch(token):
+    token = token.lower()
+    if len(token) != BASE36_EPOCH_WIDTH:
+        raise ValueError()
+    if any(ch not in BASE36_ALPHABET for ch in token):
+        raise ValueError()
+
+    return int(token, 36)
+
+
+def format_timestamp_tag(ts, *, fmt="datetag"):
+    fmt = validate_timestamp_format(fmt)
+    ts = int(ts)
+    if fmt == "datetag":
+        return time2all(ts).dt
+    if ts < 0:
+        raise ValueError("base36-epoch requires a non-negative epoch second")
+    return encode_base36_epoch(ts)
+
+
+def parse_datetag_flag(ts):
     ts = ts.removeprefix(".")
     if not (match := re_datetag.match(ts)):
         raise ValueError()
     ts, _, _, _ = time2all("".join(match.groups()[:-1]))
-    flag = match.groups("")[-1]
+    flag = match.groups("")[-1].upper()
     return ts, flag
 
 
-def apath2rpath(apath, ts=None, *, flag="", verify=True):
+def parse_base36_epoch_flag(tag):
+    tag = tag.removeprefix(".")
+    token, flag = tag[:BASE36_EPOCH_WIDTH], tag[BASE36_EPOCH_WIDTH:]
+    if flag not in {"", "D", "R", "d", "r"}:
+        raise ValueError()
+    ts = decode_base36_epoch(token)
+    return ts, flag.upper()
+
+
+def parse_timestamp_tag(tag, *, preferred="datetag"):
+    preferred = validate_timestamp_format(preferred)
+    for fmt in (preferred, alternate_timestamp_format(preferred)):
+        try:
+            if fmt == "datetag":
+                ts, flag = parse_datetag_flag(tag)
+            else:
+                ts, flag = parse_base36_epoch_flag(tag)
+            return ts, flag, fmt
+        except ValueError:
+            pass
+    raise ValueError()
+
+
+def parse_dateflag(ts):
+    ts, flag, _ = parse_timestamp_tag(ts)
+    return ts, flag
+
+
+def timestamp_to_epoch(ts, *, preferred="datetag"):
+    if isinstance(ts, str):
+        if re_datetag.match(ts):
+            return parse_datetag_flag(ts)[0]
+        tag = ts.removeprefix(".")
+        if len(tag) == BASE36_EPOCH_WIDTH and all(
+            ch.lower() in BASE36_ALPHABET for ch in tag
+        ):
+            return decode_base36_epoch(tag)
+    return time2all(ts).ts
+
+
+def apath2rpath(apath, ts=None, *, flag="", verify=True, fmt="datetag"):
     """
     Convert from apath,ts ('sub/dir/file.txt',12345)
     to rpath ('sub/dir/file.12345.txt')
@@ -525,7 +619,8 @@ def apath2rpath(apath, ts=None, *, flag="", verify=True):
     from . import nowfun  # Avoid circular import
 
     ts = ts or nowfun()[0]
-    ts, dt, _, _ = time2all(ts)
+    ts = timestamp_to_epoch(ts, preferred=fmt)
+    dt = format_timestamp_tag(ts, fmt=fmt)
 
     base, ext = smart_splitext(apath)
     rpath = f"{base}.{dt}{flag}{ext}"
@@ -538,10 +633,17 @@ def apath2rpath(apath, ts=None, *, flag="", verify=True):
     #     )
 
     # Sanity check:
-    if verify and rpath2apath(rpath) != (apath, ts, flag):
+    sanity_ok = True
+    if verify:
+        try:
+            sanity_ok = rpath2apath(rpath, preferred=fmt) == (apath, ts, flag)
+        except (NoTimestampInNameError, ValueError):
+            sanity_ok = False
+
+    if verify and not sanity_ok:
         logger.warning(
             f"Failed sanity check {apath = }, {rpath = }. Using fallback split"
         )
-        base, ext = os.path.split(apath)
+        base, ext = os.path.splitext(apath)
         rpath = f"{base}.{dt}{flag}{ext}"
     return rpath

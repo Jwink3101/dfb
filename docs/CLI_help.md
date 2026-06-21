@@ -1,7 +1,7 @@
 # CLI Help
 
 
-version: `dfb-20250711.0BETA`  
+version: `dfb-20260621.0b0`  
 
 
 # No Command
@@ -29,6 +29,7 @@ Commands:
 
   command
     init                write a new config file.
+    mount               Mount a dfb view over an rclone mount (optional dependency).
     backup              Run a backup
     refresh             Refresh the local cache with a real listing of the remote
                         destination Same as calling backup with `--refresh` but can be
@@ -75,6 +76,104 @@ Global Settings:
 
 ```
 
+# mount
+
+
+```text
+usage: dfb mount [-h] [--before TS] [--after AFTER]
+                 [--remove-empty-dirs | --no-remove-empty-dirs]
+                 [--empty-check-depth N] [--empty-check-fail {hide,show}]
+                 [--undated-files {show,hide,tag}] [--cache | --no-cache]
+                 [--cache-reset minutes] [--fuse-library path] [--show-deleted] [-q |
+                 -v] [--version]
+                 rclone_mount_loc mount_dest
+
+dfb FUSE thin-wrapper mount. Must FIRST mount the destination with rclone. This
+implementation relies on mfusepy (external) rather than a bundled FUSE shim.
+
+positional arguments:
+  rclone_mount_loc      Path where rclone is mounted
+  mount_dest            Mount dest
+
+options:
+  -h, --help            show this help message and exit
+  --before, --at TS     Specify a timestamp. Specify a date and timestamp in an
+                        ISO-8601 like format (YYYY-MM-DD[T]HH:MM:SS) with or without
+                        spaces, colons, dashes, "T", etc. Can optionally specify a
+                        numeric time zone (e.g. -05:00) or 'Z'. If no timezone is
+                        specified, it is assumed *local* time. Alternatively, can
+                        specify unix time with a preceding 'u' (e.g. 'u1678560662').
+                        Or can specify a time difference from the current time with
+                        any (and only) of the following: second[s], minute[s],
+                        hour[s], day[s], week[s]. Example: "10 days 1 hour 4 minutes
+                        32 seconds". (The order doesn't matter). Can also specify
+                        "now" for the current time.
+  --after AFTER         Only show files after the specified time. Specify a date and
+                        timestamp in an ISO-8601 like format (YYYY-MM-DD[T]HH:MM:SS)
+                        with or without spaces, colons, dashes, "T", etc. Can
+                        optionally specify a numeric time zone (e.g. -05:00) or 'Z'.
+                        If no timezone is specified, it is assumed *local* time.
+                        Alternatively, can specify unix time with a preceding 'u'
+                        (e.g. 'u1678560662'). Or can specify a time difference from
+                        the current time with any (and only) of the following:
+                        second[s], minute[s], hour[s], day[s], week[s]. Example: "10
+                        days 1 hour 4 minutes 32 seconds". (The order doesn't matter).
+                        Can also specify "now" for the current time.
+  --undated-files {show,hide,tag}
+                        How to handle files without a datetag. 'show' keeps them as
+                        normal files, 'hide' excludes them, and 'tag' shows them with
+                        a trailing [NODATE]. Empty directory checks use this same
+                        visibility behavior. Default: tag.
+  --cache, --no-cache   Cache directory listings. Defaults to enabled when
+                        --before/--at is used, otherwise disabled. For long-running
+                        mounts, consider --no-cache so new backups are visible.
+  --cache-reset minutes
+                        Specify an interval, in minutes, to reset the cache. If not
+                        set, cache will not reset
+  --fuse-library path   Optional libfuse path/name (e.g. fuse-t) for macOS FUSE-T
+                        setups.
+  --show-deleted        Show deleted files with a trailing [DEL] suffix. Opening these
+                        files returns literal [DEL] content. Note that directories can
+                        still appear empty if you are viewing an earlier --before/--at
+                        time and no files existed yet.
+  -q, --quiet           Only show warnings and errors.
+  -v, --verbose         Enable debug logging.
+  --version             show program's version number and exit
+
+Empty Directory Handling:
+  --remove-empty-dirs, --no-remove-empty-dirs
+                        Try to determine if a directory is empty and hide those with
+                        no visible files. Due to dfb keeping all copies of files,
+                        directories can remain after deletes. This may walk
+                        subdirectories and can be expensive. Default: disabled (--no-
+                        remove-empty-dirs).
+  --empty-check-depth N
+                        When --remove-empty-dirs is enabled, limit how deep to scan
+                        for visible files. Depth 0 checks only the directory itself,
+                        depth 1 checks one level below, and so on. Lower depths are
+                        faster but less certain. Ignored unless --remove-empty-dirs is
+                        set.
+  --empty-check-fail {hide,show}
+                        Behavior when --empty-check-depth cannot determine emptiness
+                        because the depth limit is reached before a visible file is
+                        found. 'hide' treats it as empty and hides the directory;
+                        'show' keeps it visible. Default: hide.
+
+Note on Mounting
+----------------
+This is a thin wrapper around a simple loop-back file system pointed to the dfb
+destination. Rclone's mounting capabilities are more powerful, so this overlays
+an rclone mount and presents the dfb view.
+
+Example: Assume `dst = "backups:server"`
+
+    $ rclone mount backups:server rclone_mount --vfs-cache-mode full --read-only
+    $ dfb mount rclone_mount dfb_mount
+
+You can mount a top-level remote and point dfb-mount at any subdirectory.
+
+```
+
 # backup
 
 
@@ -82,6 +181,7 @@ Global Settings:
 usage: dfb backup [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                   [-o 'OPTION = VALUE'] [-n] [-i] [--dump FILE or -] [--subdir SUBDIR]
                   [--refresh] [--refresh-use-snapshots | --no-refresh-use-snapshots]
+                  [--refresh-references | --no-refresh-references]
 
 options:
   -h, --help            show this help message and exit
@@ -107,6 +207,10 @@ options:
                         They are not needed but enable src-to-src comparisons
                         immediately after refresh and are faster for resolving
                         references. Default: True.
+  --refresh-references, --no-refresh-references
+                        Whether or not to resolve reference files after refresh
+                        listing. Disabling skips reference resolution and keeps
+                        unresolved reference markers in the cache. Default: True.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -120,7 +224,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -152,6 +256,7 @@ Execution Settings:
 ```text
 usage: dfb refresh [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                    [-o 'OPTION = VALUE'] [--use-snapshots | --no-use-snapshots]
+                   [--refresh-references | --no-refresh-references]
 
 options:
   -h, --help            show this help message and exit
@@ -161,6 +266,10 @@ options:
                         They are not needed but enable src-to-src comparisons
                         immediately after refresh and are faster for resolving
                         references. Default: True.
+  --refresh-references, --no-refresh-references
+                        Whether or not to resolve reference files after refresh
+                        listing. Disabling skips reference resolution and keeps
+                        unresolved reference markers in the cache. Default: True.
 
 Global Settings:
   Default verbosity is 1 for backup/restore/prune and 0 for listing
@@ -174,7 +283,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -194,8 +303,7 @@ Config & Cache Settings:
 ```text
 usage: dfb restore-dir [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                        [-o 'OPTION = VALUE'] [--at TIMESTAMP] [--after TIMESTAMP]
-                       [--only TIMESTAMP] [--no-check] [-n] [-i]
-                       [--shell-script FILE or -] [--source-dir SOURCE]
+                       [--only TIMESTAMP] [--no-check] [-n] [-i] [--source-dir SOURCE]
                        dest
 
 Restore a (sub)directory to a specified location
@@ -224,7 +332,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -246,7 +354,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -262,12 +370,6 @@ Execution Settings:
 
   -n, --dry-run         Do not execute any changes
   -i, --interactive     Display planned actions and prompt to continue or stop
-  --shell-script FILE or -
-                        Rather than call rclone from within 'dfb restore-dir', instead
-                        generate a shell script at FILE or - that will perform the
-                        same actions. This is useful to verify behavior and modify as
-                        needed. Note that this may not be perfect but should be close.
-                        Can specify "-" to print script
 
 ```
 
@@ -277,8 +379,7 @@ Execution Settings:
 ```text
 usage: dfb restore-file [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
                         [-o 'OPTION = VALUE'] [--at TIMESTAMP] [--after TIMESTAMP]
-                        [--only TIMESTAMP] [--no-check] [-n] [-i]
-                        [--shell-script FILE or -] [--to]
+                        [--only TIMESTAMP] [--no-check] [-n] [-i] [--to]
                         source dest
 
 positional arguments:
@@ -308,7 +409,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -330,7 +431,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -346,12 +447,6 @@ Execution Settings:
 
   -n, --dry-run         Do not execute any changes
   -i, --interactive     Display planned actions and prompt to continue or stop
-  --shell-script FILE or -
-                        Rather than call rclone from within 'dfb restore-file',
-                        instead generate a shell script at FILE or - that will perform
-                        the same actions. This is useful to verify behavior and modify
-                        as needed. Note that this may not be perfect but should be
-                        close. Can specify "-" to print script
 
 ```
 
@@ -378,7 +473,7 @@ options:
                         versions, total_size, size, ModTime, Timestamp, path. If a
                         file is a reference, the size will be that of the referent
                         with an "R" appended.
-  --list {files,dirs,both}, --list-only {files,dirs,both}
+  --list, --list-only {files,dirs,both}
                         Only list files or directories (or dirs). Default 'both'
                         normally or 'files' for --recursive mode.
   -r, --recursive       List all items recursively
@@ -405,7 +500,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -420,7 +515,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -460,8 +555,7 @@ options:
   -d, --deleted, --del  List deleted files as well. Specify twice to ONLY include
                         deleted files
   -e, --export          Export mode. Includes _all_ entries, not just the final one
-  -O OUTPUT, --output OUTPUT
-                        Specify an output file. Otherwise will print to stdout. If the
+  -O, --output OUTPUT   Specify an output file. Otherwise will print to stdout. If the
                         file ends in .gz or .xz, will use the respective compression.
 
 Global Settings:
@@ -482,7 +576,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -497,7 +591,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -547,7 +641,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -562,7 +656,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -607,7 +701,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -663,7 +757,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -694,7 +788,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -733,7 +827,7 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
-  -N N, --keep-versions N
+  -N, --keep-versions N
                         Specify number of versions to keep past the specified time.
                         This can be used to prune versions only. For example, to keep
                         only the last 10 versions, do "prune now -N 10". Can also be
@@ -757,7 +851,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -816,7 +910,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -838,7 +932,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -865,6 +959,8 @@ Commands:
 
   command
     dbimport            Import an exported list
+    lsjson-import       Import an rclone lsjson result
+    refresh-refs        Refresh reference entries in the local cache
     prune-file          Prune a specific file (real-path or rpath)
     timestamp-include-filters
                         Create rclone --include filters for a time range
@@ -912,7 +1008,113 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be proper
+                        Python (e.g. quoted strings). Example: --override "compare =
+                        'mtime'". Override text is evaluated before *and* after the
+                        config file however, the variables 'pre' and 'post' are
+                        defined as True or False if it is before or after the config
+                        file. These can be used with conditionals to control
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
+
+```
+
+# advanced lsjson-import
+
+
+```text
+usage: dfb advanced lsjson-import [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                                  [-o 'OPTION = VALUE'] [--files [file ...]]
+                                  [--dirs [dir ...]] [--reset] [--upload]
+                                  [--refresh-references | --no-refresh-references]
+                                  [files ...]
+
+[ADVANCED] Import file(s) and append to database from rclone lsjson output. Unlike
+`dbimport`, this expects rclone `lsjson` data (not dfb export JSONL). Will overwrite
+any existing data if applicable. Note: Does *not* upload the import file lists to the
+remote as in a backup.
+
+positional arguments:
+  files                 File(s) to import. Can be any rclone path including local.
+                        Files must be JSON from rclone lsjson (array/object).
+
+options:
+  -h, --help            show this help message and exit
+  --files [file ...]    File(s) to import. Can be any rclone path including local.
+                        Files must be JSON from rclone lsjson (array/object).
+  --dirs [dir ...]      Directories of files import. Can be any rclone path including
+                        local. Will always import files then directories
+  --reset               Reset the DB before import. Call without files to *just* reset
+  --upload              Uploads the imported file(s). Will put them in a subdirectory
+                        of the snapshots with the current time and label each file as
+                        'N.{filename}'
+  --refresh-references, --no-refresh-references
+                        Whether or not to resolve imported reference files. Disabling
+                        skips the resolver pass and keeps unresolved reference markers
+                        in the cache. Default: True.
+
+Global Settings:
+  Default verbosity is 1 for backup/restore/prune and 0 for listing
+
+  -v, --verbose, --debug
+                        +1 verbosity
+  -q, --quiet           -1 verbosity
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+
+Config & Cache Settings:
+  --config file         (Required) Specify config file. Can also be specified via the
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
+  -o, --override 'OPTION = VALUE'
+                        Override any config option for this call only. Must be
+                        specified as 'OPTION = VALUE', where VALUE should be proper
+                        Python (e.g. quoted strings). Example: --override "compare =
+                        'mtime'". Override text is evaluated before *and* after the
+                        config file however, the variables 'pre' and 'post' are
+                        defined as True or False if it is before or after the config
+                        file. These can be used with conditionals to control
+                        overrides. See readme for details. Can specify multiple times.
+                        There is no input validation so do not specify untrusted
+                        inputs.
+
+```
+
+# advanced refresh-refs
+
+
+```text
+usage: dfb advanced refresh-refs [-h] [-v] [-q] [--temp-dir TEMP_DIR] --config file
+                                 [-o 'OPTION = VALUE']
+                                 [--use-snapshots | --no-use-snapshots]
+
+[ADVANCED] Refresh only reference entries already in the local cache. Unlike
+`refresh`, this does not relist the destination; it only re-resolves reference marker
+files using the same resolver path.
+
+options:
+  -h, --help            show this help message and exit
+  --use-snapshots, --no-use-snapshots
+                        Whether or not to also download snapshots from the destination
+                        and update metadata before resolving references. Note that
+                        snapshots are secondary but are faster for resolving
+                        references. Default: True.
+
+Global Settings:
+  Default verbosity is 1 for backup/restore/prune and 0 for listing
+
+  -v, --verbose, --debug
+                        +1 verbosity
+  -q, --quiet           -1 verbosity
+  --temp-dir TEMP_DIR   Specify a temp dir. Otherwise will use Python's default
+
+Config & Cache Settings:
+  --config file         (Required) Specify config file. Can also be specified via the
+                        $DFB_CONFIG environment variable or is implied if executing
+                        the config file itself. $DFB_CONFIG is currently not set.
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -962,7 +1164,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -1021,7 +1223,7 @@ Config & Cache Settings:
   --config file         (Required) Specify config file. Can also be specified via the
                         $DFB_CONFIG environment variable or is implied if executing
                         the config file itself. $DFB_CONFIG is currently not set.
-  -o 'OPTION = VALUE', --override 'OPTION = VALUE'
+  -o, --override 'OPTION = VALUE'
                         Override any config option for this call only. Must be
                         specified as 'OPTION = VALUE', where VALUE should be proper
                         Python (e.g. quoted strings). Example: --override "compare =
@@ -1043,7 +1245,7 @@ Time Specification:
   Example: "10 days 1 hour 4 minutes 32 seconds". (The order doesn't matter). Can
   also specify "now" for the current time.
 
-  --at TIMESTAMP, --before TIMESTAMP
+  --at, --before TIMESTAMP
                         Timestamp at which to show the files. If not specified, will
                         be the latest. Note that if '--after' is set, this will not be
                         the full snapshot in time.
@@ -1071,6 +1273,7 @@ Commands:
   command
     apath2rpath  Convert apparent path (apath) and date to a real path (rpath)
     rpath2apath  Convert real path (rpath) an apparent path (apath) and date
+    tsconv       Convert between canonical filename timestamp tag formats
 
 ```
 
@@ -1078,28 +1281,32 @@ Commands:
 
 
 ```text
-usage: dfb utils apath2rpath [-h] [--date TIMESTAMP] [-0] files [files ...]
+usage: dfb utils apath2rpath [-h] [--date TIMESTAMP] [--format {datetag,base36-epoch}]
+                             [-0]
+                             files [files ...]
 
 Convert apparent path (apath) and date to a real path (rpath)
 
 positional arguments:
-  files             Specify one or more files. If '-' is specified, will read stdin
-                    (and automatically handle newlines or null-bytes).
+  files                 Specify one or more files. If '-' is specified, will read
+                        stdin (and automatically handle newlines or null-bytes).
 
 options:
-  -h, --help        show this help message and exit
-  --date TIMESTAMP  Specify timestamp for the filenames. Default is current time.
-                    Specify a date and timestamp in an ISO-8601 like format (YYYY-MM-
-                    DD[T]HH:MM:SS) with or without spaces, colons, dashes, "T", etc.
-                    Can optionally specify a numeric time zone (e.g. -05:00) or 'Z'.
-                    If no timezone is specified, it is assumed *local* time.
-                    Alternatively, can specify unix time with a preceding 'u' (e.g.
-                    'u1678560662'). Or can specify a time difference from the current
-                    time with any (and only) of the following: second[s], minute[s],
-                    hour[s], day[s], week[s]. Example: "10 days 1 hour 4 minutes 32
-                    seconds". (The order doesn't matter). Can also specify "now" for
-                    the current time.
-  -0, --print0      Seperate multiple items with a null byte instead of newline
+  -h, --help            show this help message and exit
+  --date TIMESTAMP      Specify timestamp for the filenames. Default is current time.
+                        Specify a date and timestamp in an ISO-8601 like format (YYYY-
+                        MM-DD[T]HH:MM:SS) with or without spaces, colons, dashes, "T",
+                        etc. Can optionally specify a numeric time zone (e.g. -05:00)
+                        or 'Z'. If no timezone is specified, it is assumed *local*
+                        time. Alternatively, can specify unix time with a preceding
+                        'u' (e.g. 'u1678560662'). Or can specify a time difference
+                        from the current time with any (and only) of the following:
+                        second[s], minute[s], hour[s], day[s], week[s]. Example: "10
+                        days 1 hour 4 minutes 32 seconds". (The order doesn't matter).
+                        Can also specify "now" for the current time.
+  --format {datetag,base36-epoch}
+                        Timestamp tag format to write in the generated rpath
+  -0, --print0          Seperate multiple items with a null byte instead of newline
 
 ```
 
@@ -1119,5 +1326,24 @@ positional arguments:
 options:
   -h, --help         show this help message and exit
   --timestamp-local  Return timestamps in local time instead of UTC
+
+```
+
+# utils tsconv
+
+
+```text
+usage: dfb utils tsconv [-h] [--to {datetag,base36-epoch}] [--raw] values [values ...]
+
+Convert supported filename timestamp tags and emit both canonical forms.
+
+positional arguments:
+  values                One or more datetag or base36-epoch timestamp values
+
+options:
+  -h, --help            show this help message and exit
+  --to {datetag,base36-epoch}
+                        Output format used when --raw is specified
+  --raw                 Print only the selected output token instead of JSONLines
 
 ```

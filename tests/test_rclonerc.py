@@ -16,6 +16,8 @@ if (p := os.path.abspath("../")) not in sys.path:
 from dfb import rclonerc
 from dfb.rclonerc import RC, rcpathjoin, rcpathsplit
 
+TESTDIRS = Path(__file__).parent / "testdirs"
+
 
 def rmdir(path):
     try:
@@ -27,12 +29,11 @@ def rmdir(path):
 # do all tests in one  since it can then use the same rc
 def test_main():
     # if True:
-    testpath = Path("testdirs/rcmain")
+    testpath = TESTDIRS / "rcmain"
     rmdir(testpath)
     testpath.mkdir(exist_ok=True, parents=False)
 
-    config = dedent(
-        f"""\
+    config = dedent(f"""\
     [src]
     type = alias
     remote = {str(testpath / 'A')}
@@ -40,15 +41,12 @@ def test_main():
     [dst]
     type = alias
     remote = {str(testpath / 'B')}
-    """
-    )
+    """)
 
     (testpath / "config.cfg").write_text(config)
 
     rc_log = logging.getLogger("dfb.rclonerc-rc-server")
     rc_log.setLevel(logging.DEBUG)
-    stream_handler = logging.StreamHandler(stream=sys.stderr)
-    rc_log.addHandler(stream_handler)
 
     rc = RC(
         serve_flags=["--config", str(testpath / "config.cfg"), "-vv"],

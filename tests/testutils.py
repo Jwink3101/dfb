@@ -145,7 +145,11 @@ class Tester:
             offset = 2 * len(self.logs) + 1
         dfb._override_offset = offset
 
-        r = dfb.cli.cli([cmd0, *args, "--config", self.configfile])
+        try:
+            r = dfb.cli.cli([cmd0, *args, "--config", self.configfile])
+        finally:
+            if hasattr(self, "dstdb"):
+                self.dstdb.reconnect()
 
         logfile = self.config_obj.logfile.resolve()
         debugfile = self.config_obj.debuglogfile.resolve()
@@ -195,7 +199,7 @@ class Tester:
     def make_ignore(self, file=".ignore"):
         ignore = self.pwd.parent / file
         if not ignore.exists():
-            self.pwd.parent.mkdir(exist_ok=True, parents=True)
+            ignore.parent.resolve().mkdir(exist_ok=True, parents=True)
             with ignore.open(mode="a"):
                 pass
 

@@ -8,13 +8,8 @@ from .utils import apath2rpath, rpath2apath, time2all
 
 logger = logging.getLogger(__name__)
 
-__version__ = "20250711.0BETA"
+__version__ = "20260621.0b0"
 MIN_RCLONE = 1, 63, 0
-
-
-# This is a bit of a hack. When setup.py is run, if and only if, it is a git repo, this
-# will get set. Otherwise, it is None
-__git_version__ = None
 
 _override_ts = os.environ.get("DFB_OVERRIDE_TIMESTAMP", None)
 _override_unix = os.environ.get("DFB_OVERRIDE_UNIXTIME", None)

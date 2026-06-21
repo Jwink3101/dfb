@@ -119,7 +119,7 @@ class ConfigError(ValueError):
 
 class Config:
     def __init__(self, configpath, tmpdir=None, verbosity=1, add_params=None):
-        from . import __git_version__, __version__, nowfun
+        from . import __version__, nowfun
 
         self._config = {"_configpath": configpath, "verbosity": verbosity}
         try:
@@ -146,8 +146,6 @@ class Config:
         init_logging(self.logfile, self.debuglogfile, verbosity)
 
         logger.info(f"DFB ({__version__})")
-        if __git_version__:
-            logger.info(f" {__git_version__['version']} {__git_version__['origin']}")
         logger.info(f"Now: {self.now.obj.astimezone().isoformat()}")
         logger.info(f"Backup Timestamp: {self.now.dt}Z")
         logger.info(f"config path: '{self.configpath}'")
@@ -302,6 +300,8 @@ class Config:
             "rename_method": {"reference", "copy", False, None},
             "get_modtime": {True, False, "auto"},
             "get_hashes": {True, False, "auto"},
+            "restore_metadata_source_live": {"auto", "always", "never"},
+            "filename_timestamp_format": {"datetag", "base36-epoch"},
         }
 
         for key, values in allowed.items():
@@ -542,6 +542,18 @@ get_hashes = False  # True, False, "auto"
 # supported. Changes in file metadata will *not* force a backup again.
 metadata = True
 
+# When restoring, use source-origin metadata already stored in the dfb DB row when
+# possible. This is opt-in and only affects restore behavior.
+restore_metadata_source = False
+
+# If restore_metadata_source is True, control whether restore also asks rclone to read
+# live metadata from the restore copy source in the same copy call.
+#   "auto"   : disable live source metadata only when replay is active and the restore
+#              source backend reports SlowModTime
+#   "always" : always also read live source metadata when replay is active
+#   "never"  : never read live source metadata when replay is active
+restore_metadata_source_live = "auto"
+
 # Specify additional log destinations. These should be full rclone remote directories
 # to save the log in addition to the remote. String or list of strings
 log_dest = None
@@ -549,6 +561,10 @@ log_dest = None
 # Unique name for this config file. Default is just based on the src and dst. Will be
 # processed and cleaned as needed
 config_id = f"{src}-{dst}"
+
+# Filename timestamp format for newly written backup objects. Existing objects are always
+# read regardless of format.
+filename_timestamp_format = "datetag"  # "datetag", "base36-epoch"
 
 # Specify where to store the file database. Default (None) is
 # `<rclone cache dir>/DFB/<config_id>.db`.

@@ -32,6 +32,37 @@ def test_apath2rpath_cli():
         == b"name1.20120304050607.ext\x00path/to/name2.20120304050607.txt.gz"
     )
 
+    with Capture() as cap:
+        cli(
+            [
+                "utils",
+                "apath2rpath",
+                *files,
+                "--date",
+                "20120304050607",
+                "--format",
+                "base36-epoch",
+            ]
+        )
+    assert cap.out.strip() == "name1.00m0cgu7.ext\npath/to/name2.00m0cgu7.txt.gz"
+
+    with Capture() as cap:
+        cli(
+            [
+                "utils",
+                "apath2rpath",
+                *files,
+                "--date",
+                "00m0cgu7",
+                "--format",
+                "datetag",
+            ]
+        )
+    assert (
+        cap.out.strip()
+        == "name1.20120304050607.ext\npath/to/name2.20120304050607.txt.gz"
+    )
+
 
 def test_rpath2apath_cli():
     file = "name1.20180811094630.ext"
@@ -73,6 +104,37 @@ def test_rpath2apath_cli():
         {"apath": "first.ext", "timestamp": "2018-08-11T09:46:30+00:00", "flag": ""},
         {"apath": "second", "timestamp": "2022-06-25T23:22:47+00:00", "flag": ""},
     ] == [json.loads(line) for line in cap.out.splitlines()]
+
+    with Capture() as cap:
+        cli(["utils", "rpath2apath", "name1.00m0cgu7R.ext"])
+    assert {
+        "apath": "name1.ext",
+        "timestamp": "2012-03-04T05:06:07+00:00",
+        "flag": "R",
+    } == json.loads(cap.out)
+
+
+def test_tsconv_cli():
+    with Capture() as cap:
+        cli(["utils", "tsconv", "20120304050607", "00m0cgu7"])
+    assert [
+        {
+            "input": "20120304050607",
+            "timestamp": "2012-03-04T05:06:07+00:00",
+            "datetag": "20120304050607",
+            "base36_epoch": "00m0cgu7",
+        },
+        {
+            "input": "00m0cgu7",
+            "timestamp": "2012-03-04T05:06:07+00:00",
+            "datetag": "20120304050607",
+            "base36_epoch": "00m0cgu7",
+        },
+    ] == [json.loads(line) for line in cap.out.splitlines()]
+
+    with Capture() as cap:
+        cli(["utils", "tsconv", "--to", "base36-epoch", "--raw", "20120304050607"])
+    assert cap.out.strip() == "00m0cgu7"
 
 
 if __name__ == "__main__":

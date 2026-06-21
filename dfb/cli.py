@@ -5,7 +5,7 @@ import sys
 from functools import partial
 from textwrap import dedent
 
-from . import __git_version__, __version__
+from . import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -143,40 +143,28 @@ def parse(argv=None, shebanged=False):
         help="Disable rclone comparing the source and the dest. If set, will restore everything",
     )
 
-    exe_shell_parent = argparse.ArgumentParser(add_help=False)
-    exe_dump_parent = argparse.ArgumentParser(add_help=False)
-
-    exe_groups = []
-    for par in (exe_shell_parent, exe_dump_parent):
-        pargroup = par.add_argument_group(
-            title="Execution Settings",
-            description="Precedance follows the order specified in this help",
-        )
-        # dry_int_group = dry_int_group0.add_mutually_exclusive_group()
-        pargroup.add_argument(
-            "-n", "--dry-run", action="store_true", help="Do not execute any changes"
-        )
-        pargroup.add_argument(
-            "-i",
-            "--interactive",
-            action="store_true",
-            help="Display planned actions and prompt to continue or stop",
-        )
-
-        exe_groups.append(pargroup)
-
-    exe_groups[0].add_argument(  # onto exe_shell_parent
-        "--shell-script",
-        metavar="FILE or -",
-        help="""
-            Rather than call rclone from within '%(prog)s', instead generate
-            a shell script at %(metavar)s that will perform the same actions.
-            This is useful to verify behavior and modify as needed. Note that
-            this may not be perfect but should be close. Can specify "-" to print script
-            """,
+    exe_parent = argparse.ArgumentParser(add_help=False)
+    pargroup = exe_parent.add_argument_group(
+        title="Execution Settings",
+        description="Precedance follows the order specified in this help",
+    )
+    # dry_int_group = dry_int_group0.add_mutually_exclusive_group()
+    pargroup.add_argument(
+        "-n", "--dry-run", action="store_true", help="Do not execute any changes"
+    )
+    pargroup.add_argument(
+        "-i",
+        "--interactive",
+        action="store_true",
+        help="Display planned actions and prompt to continue or stop",
     )
 
-    exe_groups[1].add_argument(  # onto exe_dump_parent
+    exe_dump_parent = argparse.ArgumentParser(add_help=False, parents=[exe_parent])
+    dumpgroup = exe_dump_parent.add_argument_group(
+        title="Execution Settings",
+        description="Precedance follows the order specified in this help",
+    )
+    dumpgroup.add_argument(
         "--dump",
         metavar="FILE or -",
         help="""
@@ -198,8 +186,6 @@ def parse(argv=None, shebanged=False):
     )
 
     version = "%(prog)s-" + __version__
-    if __git_version__:
-        version += f"|{__git_version__['version']}"
     parser.add_argument("--version", action="version", version=version)
 
     subparsers = {}
@@ -230,6 +216,14 @@ def parse(argv=None, shebanged=False):
         metavar="config-file",
         help="Specify a config file destination",
     )
+
+    #################################################
+    ## Mount (optional)
+    #################################################
+
+    from .mount import add_parser as mount_add_parser
+
+    subparsers["mount"] = mount_add_parser(subpar)
 
     #################################################
     ## Backup
@@ -277,6 +271,16 @@ def parse(argv=None, shebanged=False):
             and are faster for resolving references. Default: %(default)s.
             """,
     )
+    backup.add_argument(
+        "--refresh-references",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="""
+            Whether or not to resolve reference files after refresh listing.
+            Disabling skips reference resolution and keeps unresolved reference markers
+            in the cache. Default: %(default)s.
+            """,
+    )
 
     #################################################
     ## Backup
@@ -302,6 +306,16 @@ def parse(argv=None, shebanged=False):
             and are faster for resolving references. Default: %(default)s.
             """,
     )
+    refresh.add_argument(
+        "--refresh-references",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="""
+            Whether or not to resolve reference files after refresh listing.
+            Disabling skips reference resolution and keeps unresolved reference markers
+            in the cache. Default: %(default)s.
+            """,
+    )
 
     #################################################
     ## restore-dir
@@ -310,7 +324,7 @@ def parse(argv=None, shebanged=False):
     restore_dir = subparsers["restore-dir"] = subpar.add_parser(
         "restore-dir",
         aliases=["restore"],  # Need to reset below
-        parents=[global_parent, config_global, restore_parent, exe_shell_parent],
+        parents=[global_parent, config_global, restore_parent, exe_parent],
         help=_h,
         description=_h,
     )
@@ -337,7 +351,7 @@ def parse(argv=None, shebanged=False):
 
     restore_file = subparsers["restore-file"] = subpar.add_parser(
         "restore-file",
-        parents=[global_parent, config_global, restore_parent, exe_shell_parent],
+        parents=[global_parent, config_global, restore_parent, exe_parent],
         help="Restore a file to a specified location, file, or to stdout",
     )
 
@@ -725,6 +739,90 @@ def parse(argv=None, shebanged=False):
             """,
     )
 
+    dbimportlsjson = subparsers["dbimportlsjson"] = adv_subpar.add_parser(
+        "lsjson-import",
+        parents=[global_parent, config_global],
+        help="Import an rclone lsjson result",
+        description="""
+            [ADVANCED] Import file(s) and append to database from rclone lsjson output. 
+            Unlike `dbimport`, this expects rclone `lsjson` data (not dfb export JSONL).
+            Will overwrite any existing data if applicable. Note: Does *not* upload
+            the import file lists to the remote as in a backup.
+            """,
+    )
+
+    dbimportlsjson.add_argument(
+        "files",
+        nargs="*",
+        help="""File(s) to import. Can be any rclone path including local.
+                Files must be JSON from rclone lsjson (array/object).""",
+    )
+    dbimportlsjson.add_argument(
+        "--files",
+        nargs="*",
+        metavar="file",
+        action="append",
+        default=[],
+        dest="files2",
+        help="""File(s) to import. Can be any rclone path including local.
+                Files must be JSON from rclone lsjson (array/object).""",
+    )
+
+    dbimportlsjson.add_argument(
+        "--dirs",
+        nargs="*",
+        metavar="dir",
+        action="append",
+        default=[],
+        help="""Directories of files import. Can be any rclone path including local.
+                Will always import files then directories""",
+    )
+
+    dbimportlsjson.add_argument(
+        "--reset",
+        action="store_true",
+        help="Reset the DB before import. Call without files to *just* reset",
+    )
+    dbimportlsjson.add_argument(
+        "--upload",
+        action="store_true",
+        help="""
+            Uploads the imported file(s). Will put them in a subdirectory of the snapshots
+            with the current time and label each file as 'N.{filename}'
+            """,
+    )
+    dbimportlsjson.add_argument(
+        "--refresh-references",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="""
+            Whether or not to resolve imported reference files.
+            Disabling skips the resolver pass and keeps unresolved reference markers
+            in the cache. Default: %(default)s.
+            """,
+    )
+
+    refreshrefs = subparsers["refreshrefs"] = adv_subpar.add_parser(
+        "refresh-refs",
+        parents=[global_parent, config_global],
+        help="Refresh reference entries in the local cache",
+        description="""
+            [ADVANCED] Refresh only reference entries already in the local cache.
+            Unlike `refresh`, this does not relist the destination; it only re-resolves
+            reference marker files using the same resolver path.
+            """,
+    )
+    refreshrefs.add_argument(
+        "--use-snapshots",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="""
+            Whether or not to also download snapshots from the destination and
+            update metadata before resolving references. Note that snapshots are
+            secondary but are faster for resolving references. Default: %(default)s.
+            """,
+    )
+
     #################################################
     ## Advanced prune path
     #################################################
@@ -816,6 +914,12 @@ def parse(argv=None, shebanged=False):
         help=f"Specify timestamp for the filenames. Default is current time. {ISODATEHELP}",
     )
     a2r_parser.add_argument(
+        "--format",
+        choices=["datetag", "base36-epoch"],
+        default="datetag",
+        help="Timestamp tag format to write in the generated rpath",
+    )
+    a2r_parser.add_argument(
         "-0",
         "--print0",
         action="store_true",
@@ -859,6 +963,36 @@ def parse(argv=None, shebanged=False):
             Specify one or more files. If '-' is specified, will read stdin 
             (and automatically handle newlines or null-bytes).
             """,
+    )
+
+    #################################################
+    ## cli utils tsconv
+    #################################################
+
+    tsconv_parser = subparsers["tsconv"] = cliutil_subpar.add_parser(
+        "tsconv",
+        parents=[],
+        help="Convert between canonical filename timestamp tag formats",
+        description="""
+            Convert supported filename timestamp tags and emit both canonical forms.
+            """,
+    )
+
+    tsconv_parser.add_argument(
+        "--to",
+        choices=["datetag", "base36-epoch"],
+        default="datetag",
+        help="Output format used when --raw is specified",
+    )
+    tsconv_parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Print only the selected output token instead of JSONLines",
+    )
+    tsconv_parser.add_argument(
+        "values",
+        nargs="+",
+        help="One or more datetag or base36-epoch timestamp values",
     )
 
     #################################################
@@ -942,6 +1076,7 @@ def _cli(cliconfig):
         "prune",
         "prune-file",
         "dbimport",
+        "refresh-refs",
     }:
         verbosity += 1
     verbosity += getattr(cliconfig, "verbose", 0) - getattr(cliconfig, "quiet", 0)
@@ -956,6 +1091,14 @@ def _cli(cliconfig):
         from .cliutils import cli_rpath2apath
 
         return cli_rpath2apath(cliconfig)
+    elif cliconfig.command == "tsconv":
+        from .cliutils import cli_tsconv
+
+        return cli_tsconv(cliconfig)
+    elif cliconfig.command == "mount":
+        from .mount import run as mount_run
+
+        return mount_run(cliconfig)
 
     try:
         add_params = {}
@@ -1009,7 +1152,10 @@ def _cli(cliconfig):
 
             config._set_auto()
 
-            DFBDST(config).reset(use_snapshots=cliconfig.use_snapshots)
+            DFBDST(config).reset(
+                use_snapshots=cliconfig.use_snapshots,
+                refresh_references=cliconfig.refresh_references,
+            )
             return config
         elif cliconfig.command == "dbimport":
             from .dstdb import DFBDST
@@ -1024,6 +1170,25 @@ def _cli(cliconfig):
                 reset=cliconfig.reset,
                 upload=cliconfig.upload,
             )
+            return config
+        elif cliconfig.command == "lsjson-import":
+            from .dstdb import DFBDST
+
+            cliconfig.files.extend(g for group in cliconfig.files2 for g in group)
+            cliconfig.dirs = [g for group in cliconfig.dirs for g in group]
+
+            DFBDST(config).dbimport_lsjson(
+                cliconfig.files,
+                cliconfig.dirs,
+                reset=cliconfig.reset,
+                upload=cliconfig.upload,
+                refresh_references=cliconfig.refresh_references,
+            )
+            return config
+        elif cliconfig.command == "refresh-refs":
+            from .dstdb import DFBDST
+
+            DFBDST(config).refresh_references(use_snapshots=cliconfig.use_snapshots)
             return config
         elif cliconfig.command == "snapshot":
             from .listing import snapshot

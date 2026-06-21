@@ -1,13 +1,13 @@
 """
 This will eventually be its own module. But for now, it is just bundled with dfb...
 
-rclone interfacing as a cloud API. This is intended to be like an API for a cloud 
+rclone interfacing as a cloud API. This is intended to be like an API for a cloud
 interface and less to mimic rclone's synchronizing. As such, most method default to
 always performing transfers. (via `--no-check-dest` though can change)
 
 It is assumed that this is used by someone who is familiar with rclone and some of its
 idiosyncrasies. Most methods have the ability to specify additional flags and/or
-calling options. There are no guardrails so things could break! It has some built in 
+calling options. There are no guardrails so things could break! It has some built in
 methods and you can do a low-level `rclone.call()`.
 
 It is a single file to make integrating with other codes easier.
@@ -15,8 +15,8 @@ It is a single file to make integrating with other codes easier.
 It was started as a proof-of-concept that grew. It is still a work in progress with
 some more to be added.
 
-**TODO**: Capture failures. Especially around streaming uploads but really everywhere  
-**TODO**: Better documentation of paramaters  
+**TODO**: Capture failures. Especially around streaming uploads but really everywhere
+**TODO**: Better documentation of paramaters
 **TODO**: More of the example for conditional uploads which remove the always flags
 **TODO**: Type annotation
 
@@ -886,7 +886,7 @@ class RcloneCLI:
 
     enable_check_dest = not_always
 
-    def capture(self, execute=True, save_results=False, save_stdin=False):
+    def capture(self, execute=True, save_results=False):
         """
         Context Manager to capture the subprocess command and optionally, the results.
 
@@ -910,14 +910,9 @@ class RcloneCLI:
 
         Again, execute=False may cause downstream failure.
 
-        If using save_stdin, it saves bytes or strings. If stdin is specified as
-        something else, it will be b'**not bytes**'. Otherwise, it's None.
-
         Warning: Not thread-safe. May be fixed in the future
         """
-        return capture(
-            self, execute=execute, save_results=save_results, save_stdin=save_stdin
-        )
+        return capture(self, execute=execute, save_results=save_results)
 
     def __repr__(self):
         return f"RcloneCLI(remote={self.remote!r})"
@@ -1138,17 +1133,13 @@ class capture:
     ----------
     command_history
     command_results (iff save_results and execute)
-    command_stdin (iff save_stdin and stdin is bytes or string)
-
     """
 
-    def __init__(self, rclone, execute=True, save_results=False, save_stdin=False):
+    def __init__(self, rclone, execute=True, save_results=False):
         self.rclone = rclone
         self.execute = execute
         self.save_results = save_results
-        self.save_stdin = save_stdin
         self.command_history = []
-        self.command_stdin = []
         self.command_results = []
 
     def __enter__(self):
@@ -1169,63 +1160,10 @@ class capture:
         return False
 
     def _call(self, *args, **kwargs):
-        if self.save_stdin:
-            stdin = kwargs.get("stdin", None)
-            if isinstance(stdin, (str, bytes)):
-                self.command_stdin.append(stdin)
-            elif stdin:
-                self.command_stdin.append(b"**not bytes**")
-            else:
-                self.command_stdin.append(None)
-        else:
-            self.command_stdin.append(None)
-
         res = self._oldcall(*args, **kwargs)
         if self.save_results:
             self.command_results.append(res)
         return res
-
-    def shell_script(self, export=True, cd=True):
-        """
-        Return a string that represents the shell script to do the same as the results.
-
-        Options:
-        -------
-        export [True]
-            Include  `export` statements of the rclone environment
-
-        cd [True]
-            Include a `cd` command to the current directory
-        """
-        import shlex
-
-        out = []
-        if cd:
-            cmd = ["cd", os.path.abspath(os.getcwd())]
-            out.append(shlex.join(cmd))
-        if export:
-            for key, value in self.rclone.universal_env.items():
-                if value in ("**UNSET**", self.rclone.DELENV):
-                    out.append(f"unset {key}")
-                    continue
-                out.append(f"export {key}={shlex.quote(value)}")
-        for stdin, cmd in zip(self.command_stdin, self.command_history):
-            cmd = shlex.join(cmd)
-            if stdin:
-                if isinstance(stdin, bytes):
-                    try:
-                        stdin = stdin.decode("utf8")
-                    except:
-                        stdin = "**not UTF-8**"
-                        out.append("# WARNING -- Could not understand stdin")
-                if stdin == "**not bytes**":
-                    out.append(
-                        "# WARNING -- stdin specified and not bytes. May not work"
-                    )
-                cmd = shlex.join(["echo", stdin]) + f" | {cmd}"
-            out.append(cmd)
-
-        return "\n".join(out)
 
 
 def check_returncode(proc, output=None, stderr=None):

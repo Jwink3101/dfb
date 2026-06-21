@@ -68,16 +68,14 @@ class Prune:
         config = self.config
         cliconfig = self.args
 
-        db = self.dstdb.db()
-
         err = False
         rpaths = self.rpaths = set()
         for rpath in cliconfig.rpath:
-            res = db.execute(
+            res = self.dstdb.execute(
                 """
                 SELECT rpath,size,ref_rpath,isref
                 FROM items
-                WHERE 
+                WHERE
                     rpath = ?
                 """,
                 (rpath,),
@@ -257,19 +255,18 @@ class PruneableDFBDST(DFBDST):
             logger.debug(f"(1) {name!r} consider for del {r0 + list(filter(bool,r1))}")
 
         if subdir:  # 1f
-            with self.db() as db:
-                res = db.execute(
-                    """
-                    SELECT rpath
-                    FROM items
-                    WHERE
-                        rpath LIKE ? -- points inside subdir
-                    AND
-                        apath NOT LIKE ? -- but ins't inside it
-                    """,
-                    (subdir + "%", subdir + "%"),
-                )
-                keep_rpaths.update(row["rpath"] for row in res)
+            res = self.execute(
+                """
+                SELECT rpath
+                FROM items
+                WHERE
+                    rpath LIKE ? -- points inside subdir
+                AND
+                    apath NOT LIKE ? -- but ins't inside it
+                """,
+                (subdir + "%", subdir + "%"),
+            )
+            keep_rpaths.update(row["rpath"] for row in res)
 
         # Step 2:  Loop over each group of to-be-deleted files
         # Step 2a: Delete everything that isn't (1) referenced (i.e. in keep_rpaths)
@@ -350,21 +347,24 @@ class PruneableDFBDST(DFBDST):
         #     del_rpaths.add((row["rpath"], -1))
 
         # This section has 100% test coverage! Very good to have with the complexities
+        if subdir:
+            # Subdir prune should never physically delete outside the subdir.
+            del_rpaths = {
+                (rpath, size) for rpath, size in del_rpaths if rpath.startswith(subdir)
+            }
+
         return del_rpaths
 
     def delete_rpath(self, rpath):
         """
-        Remove all entries that point to the rpath even if they are references
+        Remove all entries that point to the rpath even if they are references.
         """
-        db = self.db()
         item = {"_V": 1, "_action": "prune", "rpath": rpath}
 
-        with db:
-            # Get the implicit rowid and then use that for the delete so it only scans
-            # once. rowid is implicit and indexed.
-            row = db.execute(
+        with self._db:
+            row = self.execute(
                 """
-                SELECT rowid,size
+                SELECT size
                 FROM items
                 WHERE rpath = ?
                 LIMIT 1
@@ -372,20 +372,15 @@ class PruneableDFBDST(DFBDST):
                 (rpath,),
             ).fetchone()
 
-            try:
+            if row:
                 item["size"] = row["size"]
-
-                db.execute(
-                    """
-                    DELETE FROM items
-                    WHERE rowid = ?
-                    """,
-                    (row["rowid"],),
-                )
-            except:
-                # Likely means that there was not item that matched but this is more robust
-                # than just checking
-                pass
+            self.execute(
+                """
+                DELETE FROM items
+                WHERE rpath = ?
+                """,
+                (rpath,),
+            )
 
         with self.snap_file.open(mode="at") as fp:
             print(json.dumps(item), file=fp, flush=True)

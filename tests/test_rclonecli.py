@@ -34,14 +34,10 @@ def write_config(name):
     except:
         pass
     with open(f"testdirs/{name}.cfg", "wt") as fp:
-        fp.write(
-            dedent(
-                f"""\
+        fp.write(dedent(f"""\
             [myremote]
             type = alias
-            remote = testdirs/{name}"""
-            )
-        )
+            remote = testdirs/{name}"""))
     return f"testdirs/{name}.cfg"
 
 
@@ -309,7 +305,7 @@ def test_context_managers():
     with open("testdirs/tmpfile.txt", "wt") as fp:
         fp.write("Test File")
 
-    with rclone.capture(save_results=True, save_stdin=True) as cap:
+    with rclone.capture(save_results=True) as cap:
         not_there = "tmpfile.txt: Need to transfer - File not found at Destination"
         unchanged = "tmpfile.txt: Unchanged skipping"
         uncond = "tmpfile.txt: Transferring unconditionally as --ignore-times is in use"
@@ -345,12 +341,6 @@ def test_context_managers():
         rclone.write("some data", "testdirs/here.txt")  # Should be fine
         rclone.write(b"\xb9\xd5\x85\x85j\xa6-7\xb4\xe3", "testdirs/here.txt")
         rclone.write(io.BytesIO(os.urandom(10)), "testdirs/here.txt")
-
-        shell = cap.shell_script()
-        assert "unset RCLONE_PASSWORD_COMMAND" in shell
-        assert "echo" in shell
-        assert "Could not understand stdin" in shell
-        assert "stdin specified and not bytes" in shell
 
     # Repeat the above with `ignore_times`
     rclone = RcloneCLI(

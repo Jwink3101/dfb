@@ -39,6 +39,38 @@ There is no distinction between new or modified files
 
 This means to transfer (i.e. `copyto`) `src:<apath>` to `dst:<rpath>` or in this case, `src:new.txt` to `dst:new.19700101000001.txt`
 
+## Path conversion rules (`apath` <-> `rpath`)
+
+`dfb` stores file versions by inserting a timestamp tag (and optional flag) into the filename.
+
+By default, the timestamp tag is the existing `datetag` format. If `filename_timestamp_format = "base36-epoch"` is configured, new writes instead use an 8-character fixed-width base36 UTC epoch token.
+
+- Regular version: `name.ext` -> `name.YYYYMMDDhhmmss.ext`
+- Delete marker: `name.ext` -> `name.YYYYMMDDhhmmssD.ext`
+- Reference marker: `name.ext` -> `name.YYYYMMDDhhmmssR.ext`
+- Regular version with `base36-epoch`: `name.ext` -> `name.00s7v4f1.ext`
+- Delete marker with `base36-epoch`: `name.ext` -> `name.00s7v4f1D.ext`
+- Reference marker with `base36-epoch`: `name.ext` -> `name.00s7v4f1R.ext`
+
+The split between `name` and `.ext` is MIME-aware:
+
+- First, split at the right-most dot.
+- Then keep additional dotted suffixes (moving left) only while they are known MIME extensions.
+- Example: `archive.tar.gz` is written as `archive.YYYYMMDDhhmmss.tar.gz`.
+
+The reverse conversion (`rpath` to `apath`) is intentionally tolerant:
+
+- It first tries the MIME-aware split.
+- If that does not parse a supported timestamp tag, it falls back to a simpler "last-dot" parse.
+- Readers accept both `datetag` and `base36-epoch`, so mixed histories remain readable.
+- This allows both older and newer filename layouts to resolve to the same `apath`.
+
+Known edge cases:
+
+- Filenames manually created outside `dfb` can still be ambiguous when they mix date-like tokens and MIME-like suffixes.
+- Which suffixes are treated as MIME extensions depends on Python's `mimetypes` registry in the running environment.
+- This can change the *shape* of newly generated `rpath` names, but normal `dfb`-generated files are still expected to resolve back to the same `apath`.
+
 Sometimes this could also have `isref` as False.
 
 ### Directory Marker
@@ -93,6 +125,8 @@ Note that the referent os *relative* to the referrer's parent directory. It can 
 **Note**: This *breaks* the usual relationship between `apath` and `rpath`
 
 **Note**: Upon refresh, much of this information will be lost depending on whether the snapshot files are read
+
+**Note**: If a reference file exists but its referent cannot be found during reference resolution (e.g. refresh, `advanced refresh-refs`, or `advanced lsjson-import` with reference refresh enabled), dfb logs a warning and keeps the item as deleted by setting `size = -1` for that entry.
 
 ## Move by copy
 
@@ -189,4 +223,3 @@ Entries with
 }
 ```
 are ignore and any other key can be set. (In practice, it is just `"_action": "comment"` that makes it ignored but it is good practice to include the `"_V": 1,` in case this changes in the future)
-

@@ -5,13 +5,24 @@ Unit-like tests
 import os
 import sys
 import time
+from types import SimpleNamespace
 
 p = os.path.abspath("../")
 if p not in sys.path:
     sys.path.insert(0, p)
 
 from dfb.dstdb import apath2rpath, rpath2apath
-from dfb.utils import head_tail_table, parse_bytes, smart_splitext, time2all
+from dfb.restore import Restore
+from dfb.utils import (
+    decode_base36_epoch,
+    encode_base36_epoch,
+    head_tail_table,
+    parse_bytes,
+    parse_timestamp_tag,
+    smart_splitext,
+    time2all,
+    timestamp_to_epoch,
+)
 
 DATED_SPLIT_TESTS = {
     # Older style names before smart-split then test with smart
@@ -142,6 +153,26 @@ def test_rpath2apath():
         == "file.19700101000002.jpg.19700101000001"
     )
 
+    assert r2a("file.00s7v4f1.txt") == ("file.txt", 1706262301, "")
+    assert r2a("file.00S7V4F1r.txt") == ("file.txt", 1706262301, "R")
+    assert r2a("file.tar.00s7v4f1.gz") == ("file.tar.gz", 1706262301, "")
+    assert (
+        r2a("file.tar.00s7v4f1.gz", preferred="datetag")
+        == r2a("file.00s7v4f1.tar.gz", preferred="datetag")
+        == r2a("file.tar.gz.00s7v4f1", preferred="datetag")
+    )
+    assert (
+        r2a("file.tar.00s7v4f1.gz", preferred="base36-epoch")
+        == r2a("file.00s7v4f1.tar.gz", preferred="base36-epoch")
+        == r2a("file.tar.gz.00s7v4f1", preferred="base36-epoch")
+    )
+
+    assert r2a("file.00000002.00000001", preferred="base36-epoch") == (
+        "file.00000001",
+        2,
+        "",
+    )
+
 
 def test_apath2rpath():
     a2r = apath2rpath
@@ -166,6 +197,41 @@ def test_apath2rpath():
         "file.19700101000002", "19700101000001", verify=False
     )
 
+    for apath, split in REG_TEST.items():
+        gold = split[0] + ".00s7v4f1" + split[1]
+        assert a2r(apath, ts=1706262301, fmt="base36-epoch") == gold
+        assert a2r(apath, ts=1706262301, flag="D", fmt="base36-epoch") == gold.replace(
+            "4f1", "4f1D"
+        )
+        assert a2r(apath, ts=1706262301, flag="R", fmt="base36-epoch") == gold.replace(
+            "4f1", "4f1R"
+        )
+
+
+def test_base36_epoch_helpers():
+    assert encode_base36_epoch(0) == "00000000"
+    assert encode_base36_epoch(1) == "00000001"
+    assert encode_base36_epoch(1706262301) == "00s7v4f1"
+    assert decode_base36_epoch("00s7v4f1") == 1706262301
+    assert decode_base36_epoch("00S7V4F1") == 1706262301
+
+    assert parse_timestamp_tag("20240126094501") == (1706262301, "", "datetag")
+    assert parse_timestamp_tag("00s7v4f1") == (1706262301, "", "base36-epoch")
+    assert parse_timestamp_tag("00S7V4F1d") == (1706262301, "D", "base36-epoch")
+    assert parse_timestamp_tag("20240126094501", preferred="base36-epoch") == (
+        1706262301,
+        "",
+        "datetag",
+    )
+    assert parse_timestamp_tag("00s7v4f1", preferred="datetag") == (
+        1706262301,
+        "",
+        "base36-epoch",
+    )
+
+    assert timestamp_to_epoch("20240126094501") == 1706262301
+    assert timestamp_to_epoch("00s7v4f1") == 1706262301
+
 
 def test_time2all():
     # Make sure it will take any kind of input and give me the same
@@ -173,6 +239,169 @@ def test_time2all():
     res = time2all(ts)
     for r in res:
         assert time2all(r).ts == ts
+
+
+def test_restore_metadata_config():
+    restore = Restore.__new__(Restore)
+    restore.config = SimpleNamespace(metadata=False)
+    restore._restore_metadata_state = SimpleNamespace(
+        enabled=True,
+        live_mode="always",
+        source_slow_modtime=False,
+    )
+
+    row = {
+        "rpath": "file.19700101000001.txt",
+        "dstinfo": 0,
+        "mtime": 123,
+        "owner": "skip",
+        "atime": 123,
+        "x-amz-meta-color": "blue",
+        "size": 12,
+        "Metadata": {
+            "mtime": "2024-01-02T03:04:05Z",
+            "mode": "0100640",
+            "btime": "2024-01-01T00:00:00Z",
+            "birthtime": "2023-01-01T00:00:00Z",
+            "user.comment": "kept",
+        },
+    }
+
+    config = Restore._restore_metadata_config(
+        restore,
+        "file.19700101000001.txt",
+        ("dst:", "restore/file.txt"),
+        row,
+    )
+
+    assert config["Metadata"] is True
+    assert config["MetadataSet"] == {
+        "mtime": "1970-01-01T00:02:03Z",
+        "mode": "0100640",
+        "btime": "2024-01-01T00:00:00Z",
+        "birthtime": "2023-01-01T00:00:00Z",
+        "user.comment": "kept",
+    }
+
+
+def test_restore_metadata_config_uses_stored_mtime_without_metadata():
+    restore = Restore.__new__(Restore)
+    restore.config = SimpleNamespace(metadata=False)
+    restore._restore_metadata_state = SimpleNamespace(
+        enabled=True,
+        live_mode="never",
+        source_slow_modtime=False,
+    )
+
+    config = Restore._restore_metadata_config(
+        restore,
+        "file.19700101000001.txt",
+        ("dst:", "restore/file.txt"),
+        {
+            "rpath": "file.19700101000001.txt",
+            "dstinfo": 0,
+            "mtime": 123.25,
+        },
+    )
+
+    assert config == {
+        "Metadata": True,
+        "MetadataSet": {"mtime": "1970-01-01T00:02:03.250000Z"},
+    }
+
+
+def test_restore_metadata_config_skips_without_metadata_or_mtime():
+    restore = Restore.__new__(Restore)
+    restore.config = SimpleNamespace(metadata=False)
+    restore._restore_metadata_state = SimpleNamespace(
+        enabled=True,
+        live_mode="always",
+        source_slow_modtime=False,
+    )
+
+    config = Restore._restore_metadata_config(
+        restore,
+        "file.19700101000001.txt",
+        ("dst:", "restore/file.txt"),
+        {
+            "rpath": "file.19700101000001.txt",
+            "dstinfo": 0,
+            "mode": "0100640",
+        },
+    )
+
+    assert config == {"Metadata": False}
+
+
+def test_restore_preload_uses_selected_snapshot_row():
+    class FakeCursor:
+        def __init__(self, row):
+            self.row = row
+
+        def fetchone(self):
+            return self.row
+
+    class FakeDB:
+        def __init__(self, rows):
+            self.rows = rows
+            self.params = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def execute(self, _sql, params):
+            self.params.append(params)
+            return FakeCursor(self.rows.get(params))
+
+    class FakeDstDB:
+        def __init__(self, db):
+            self._db = db
+
+        def db(self):
+            return self._db
+
+        @staticmethod
+        def fullrow2dict(row):
+            return row.copy()
+
+    rows = {
+        ("original.txt", 1): {
+            "apath": "original.txt",
+            "rpath": "shared.19700101000001.txt",
+            "timestamp": 1,
+            "mode": "0100600",
+        },
+        ("moved.txt", 3): {
+            "apath": "moved.txt",
+            "rpath": "shared.19700101000001.txt",
+            "timestamp": 3,
+            "mode": "0100640",
+        },
+    }
+    db = FakeDB(rows)
+    restore = Restore.__new__(Restore)
+    restore.dstdb = FakeDstDB(db)
+    restore.transfers = [
+        ("shared.19700101000001.txt", ("restore", "moved.txt"), 4, "moved.txt", 3),
+        (
+            "shared.19700101000001.txt",
+            ("restore", "original.txt"),
+            4,
+            "original.txt",
+            1,
+        ),
+    ]
+
+    Restore._preload_transfer_rows(restore)
+
+    assert [transfer[3]["mode"] for transfer in restore.transfers] == [
+        "0100640",
+        "0100600",
+    ]
+    assert db.params == [("moved.txt", 3), ("original.txt", 1)]
 
 
 def test_head_tail_table():

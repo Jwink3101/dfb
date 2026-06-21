@@ -74,85 +74,111 @@ class DFBDST:
         dbpath.parent.mkdir(exist_ok=True, parents=True)
 
         self.dbpath = dbpath
+        logger.debug(f"dbpath = {str(dbpath)!r}")
 
+        self._db = self.db()
         self.init()
 
     def db(self):
-        db = sqlite3.connect(self.dbpath, check_same_thread=True)
+        db = sqlite3.connect(self.dbpath, check_same_thread=False)
         db.row_factory = MyRow
         db.set_trace_callback(sqldebug)
         return db
+
+    def reconnect(self):
+        self.close()
+        self._db = self.db()
+
+    def reset_db_file(self):
+        self.close()
+        self.dbpath.unlink()
+        self._db = self.db()
+        self.init()
+
+    def execute(self, *args, **kwargs):
+        return self._db.execute(*args, **kwargs)
+
+    def close(self):
+        db = getattr(self, "_db", None)
+        if db is not None:
+            db.close()
+            self._db = None
+
+    def __del__(self):
+        self.close()
 
     def init(self):
         # We will only write to the DB in the main thread but will
         # read in many
         items = ",".join((" ".join(row)) for row in self.COLS)
-        db = self.db()
 
-        try:
-            with db:
-                db.execute("PRAGMA journal_mode = wal")
-        except sqlite3.OperationalError:  # pragma: no cover
-            pass
-
-        # test:
-        try:
-            with db:
-                r = db.execute(
-                    """
-                    SELECT * FROM kv 
-                    WHERE key = ? OR key = ?
-                    ORDER BY key""",
-                    ("created", "version"),
-                ).fetchall()
-                if len(r) == 2:  # Note it is ORDER BY so the order wont change
-                    created, version = [i["val"] for i in r]
-                    logger.debug(f"dstdb exists. {created = } {version = }")
-                    return
-        except:
-            logger.debug("Recreate dstdb")
-
+        db = self._db
         with db:
-            db.execute(
-                f"""
+            try:
+                with db:
+                    db.execute("PRAGMA journal_mode = wal")
+            except sqlite3.OperationalError:  # pragma: no cover
+                pass
+
+            # test:
+            try:
+                with db:
+                    r = db.execute(
+                        """
+                        SELECT * FROM kv
+                        WHERE key = ? OR key = ?
+                        ORDER BY key""",
+                        ("created", "version"),
+                    ).fetchall()
+                    if len(r) == 2:  # Note it is ORDER BY so the order wont change
+                        created, version = [i["val"] for i in r]
+                        logger.debug(f"dstdb exists. {created = } {version = }")
+                        return
+            except:
+                logger.debug("Recreate dstdb")
+
+            with db:
+                db.execute(f"""
                 CREATE TABLE IF NOT EXISTS
                 items(
                     {items},
                     PRIMARY KEY (apath, timestamp)
-                )"""
-            )
+                )""")
 
-            db.execute(
-                """
+                # This is mostly just used in prune but it can come in handy if querying
+                # on the rpath. I am 99% sure it can be unique but I am going to not use that
+                # in case there is an edge case on insert.
+                db.execute("""
+                CREATE INDEX IF NOT EXISTS rpaths ON items(rpath)
+                """)
+
+                db.execute("""
                 CREATE TABLE IF NOT EXISTS kv(
                     key TEXT PRIMARY KEY,
                     val BLOB
-                )"""
-            )
+                )""")
 
-            db.execute(
-                """
+                db.execute(
+                    """
                 INSERT OR IGNORE INTO kv VALUES (?,?)
                 """,
-                ("created", self.config.now.obj.isoformat()),
-            )
-            db.execute(
-                """
+                    ("created", self.config.now.obj.isoformat()),
+                )
+                db.execute(
+                    """
                 INSERT OR IGNORE INTO kv VALUES (?,?)
                 """,
-                ("version", __version__),
-            )
-        db.commit()
-        db.close()
+                    ("version", __version__),
+                )
+            db.commit()
 
-    def reset(self, stats=None, *, use_snapshots):
+    def reset(self, stats=None, *, use_snapshots, refresh_references=True):
         if self.config.disable_refresh:
             logger.error("Refresh not allowed due to 'disable_refresh = True")
             logger.error("Run with `--override 'disable_refresh = False'` to override")
             raise ValueError("Refresh Disabled")
 
-        self.dbpath.unlink()
-        self.init()
+        self.reset_db_file()
 
         files = list(self._relist(stats=stats))  # Need them all to get snapshots
         logger.info(
@@ -164,7 +190,7 @@ class DFBDST:
             self._load_snapshots()
             files = (self._apply_snapshot_file(file) for file in files)
 
-        db = self.db()
+        db = self._db
         for ii, file in enumerate(files):
             db.execute(
                 f"INSERT INTO items VALUES ({','.join('?' for _ in DFBDST.COLS)})",
@@ -173,9 +199,51 @@ class DFBDST:
             if ii % 100 == 0:  # Frequent commits but not every time.
                 db.commit()
         db.commit()
-        db.close()
 
         # Update those with isref = 2. Do this after full listing
+        if refresh_references:
+            self._update_references()
+
+    def refresh_references(self, *, use_snapshots):
+        if self.config.disable_refresh:
+            logger.error("Refresh not allowed due to 'disable_refresh = True")
+            logger.error("Run with `--override 'disable_refresh = False'` to override")
+            raise ValueError("Refresh Disabled")
+
+        db = self._db
+        with db:
+            files = [
+                DFBDST.fullrow2dict(row)
+                for row in db.execute("SELECT * FROM items WHERE isref")
+            ]
+
+        if not files:
+            logger.info("No references to refresh")
+            return
+
+        logger.info(f"Refreshing {len(files)} reference file(s)")
+
+        # Convert resolved rows back to unresolved marker rows so they can be
+        # refreshed via the same resolver path used by a full refresh.
+        staged = []
+        for file in files:
+            if file.get("ref_rpath", None):
+                file["rpath"] = file["ref_rpath"]
+                file["ref_rpath"] = None
+            file["isref"] = 2
+            staged.append(file)
+
+        if use_snapshots:
+            self._load_snapshots()
+            staged = [self._apply_snapshot_file(file) for file in staged]
+
+        with db:
+            db.executemany(
+                f"""REPLACE INTO items 
+                    VALUES ({','.join('?' for _ in DFBDST.COLS)})""",
+                [DFBDST.dict2fullrow(file) for file in staged],
+            )
+
         self._update_references()
 
     def _relist(self, stats=None):
@@ -235,7 +303,7 @@ class DFBDST:
             yield new
 
     def _update_references(self):
-        db = self.db()
+        db = self._db
         with db:
             files = db.execute("""SELECT * FROM items WHERE isref = 2""")
             files = files.fetchall()
@@ -280,8 +348,8 @@ class DFBDST:
             # Get the original information
             row = db.execute(
                 """
-                SELECT * FROM items 
-                WHERE rpath = ? AND NOT isref""",
+                    SELECT * FROM items
+                    WHERE rpath = ? AND NOT isref""",
                 (referent,),
             ).fetchone()
 
@@ -316,7 +384,6 @@ class DFBDST:
             if ii % 10 == 0:
                 db.commit()
         db.commit()
-        db.close()
 
     def _load_snapshots(self):
         # May have to rethink this for memory but that would be a *lot* of files
@@ -407,14 +474,52 @@ class DFBDST:
         return file
 
     def dbimport(self, exportfiles, exportdirs, reset=False, upload=False):
+        self._dbimport(
+            exportfiles,
+            exportdirs,
+            reset=reset,
+            upload=upload,
+            fileglob="*.jsonl*",
+            loadfunc=self._load_importfile_jsonl,
+            update_refs=False,
+        )
+
+    def dbimport_lsjson(
+        self,
+        exportfiles,
+        exportdirs,
+        reset=False,
+        upload=False,
+        refresh_references=True,
+    ):
+        self._dbimport(
+            exportfiles,
+            exportdirs,
+            reset=reset,
+            upload=upload,
+            fileglob=("*.json*", "*.lsjson"),
+            loadfunc=self._load_importfile_lsjson,
+            update_refs=refresh_references,
+        )
+
+    def _dbimport(
+        self,
+        exportfiles,
+        exportdirs,
+        *,
+        reset,
+        upload,
+        fileglob,
+        loadfunc,
+        update_refs,
+    ):
         if self.config.disable_refresh:
             logger.error("DB Import not allowed due to 'disable_refresh = True")
             logger.error("Run with `--override 'disable_refresh = False'` to override")
             raise ValueError("Refresh Disabled")
 
         if reset:
-            self.dbpath.unlink()
-            self.init()
+            self.reset_db_file()
 
         rc = self.config.rc.start()
 
@@ -453,28 +558,21 @@ class DFBDST:
             rc.call("sync/sync", params=params)
 
         # The "sorted" is not really needed but it is likely to keep the
-        # database cleaner
-        loadfiles = sorted(imp.rglob("*.jsonl*"), key=lambda file: file.name)
+        # database cleaner.
+        loadfiles = sorted(
+            {file for pattern in listify(fileglob) for file in imp.rglob(pattern)},
+            key=lambda file: file.name,
+        )
 
         prune = []  # prune is OUTSIDE the file loop as noted above
         for exportfile in loadfiles:
             logger.debug(f"Importing from {str(exportfile)!r}")
-            files = []
-            pcount = 0
-            with smart_open(exportfile, "rt") as fp:
-                for line in fp:
-                    file = json.loads(line)
-                    if file.get("_action", None) == "comment":
-                        continue
+            files, fprune, mode = loadfunc(exportfile)
+            pcount = len(fprune)
+            prune.extend(fprune)
 
-                    if file.get("_action", None) == "prune":
-                        prune.append(file)
-                        pcount += 1
-                        continue
-
-                    files.append(file)
-
-            with self.db() as db:
+            db = self._db
+            with db:
                 db.executemany(
                     f"""INSERT OR REPLACE INTO items 
                         VALUES ({','.join('?' for _ in DFBDST.COLS)})""",
@@ -483,10 +581,18 @@ class DFBDST:
             msg = f"  Imported {len(files)} files"
             if pcount:
                 msg += f" and will prune {pcount}"
+            else:
+                msg += f" from {mode}"
             logger.info(msg)
 
         if prune:
-            with self.db() as db:
+
+            db = self._db
+            with db:
+                # This was added on 2025-09-26. Newer DBs will have it already so this
+                # will have no effect on them but its here for older
+                db.execute("CREATE INDEX IF NOT EXISTS rpaths ON items(rpath)")
+
                 db.executemany(
                     """
                     DELETE FROM items 
@@ -494,6 +600,10 @@ class DFBDST:
                     ((file["rpath"],) for file in prune),
                 )
             logger.info(f"Pruned {len(prune)} files from all exports")
+
+        # Match refresh behavior for references by always running the resolver pass.
+        if update_refs:
+            self._update_references()
 
         if upload:
             snapdir = self.snap_file.parent / self.snap_file.stem
@@ -504,6 +614,78 @@ class DFBDST:
                 shutil.copy2(loadfile, dst)
 
             self.push_snapshots(compress=False)
+
+    def _load_importfile_jsonl(self, exportfile):
+        with smart_open(exportfile, "rt") as fp:
+            txt = fp.read()
+
+        files = []
+        prune = []
+        for line in txt.splitlines():
+            if not line.strip():
+                continue
+
+            file = json.loads(line)
+            if file.get("_action", None) == "comment":
+                continue
+
+            if file.get("_action", None) == "prune":
+                prune.append(file)
+                continue
+
+            files.append(file)
+
+        return files, prune, "jsonl"
+
+    def _load_importfile_lsjson(self, exportfile):
+        with smart_open(exportfile, "rt") as fp:
+            data = json.load(fp)
+
+        if isinstance(data, dict):
+            data = [data]
+        if not isinstance(data, list):
+            raise ValueError(f"Invalid lsjson format in {str(exportfile)!r}")
+
+        return self._files_from_lsjson(data), [], "lsjson"
+
+    def _files_from_lsjson(self, lsjson):
+        files = []
+        for item in lsjson:
+            if item.get("IsDir", False):
+                continue
+
+            try:
+                apath, ts, flag = rpath2apath(item["Path"])
+            except (ValueError, NoTimestampInNameError, IndexError):
+                logger.error(
+                    f"Could not find timestamp for {item.get('Path', '<missing>')}. "
+                    "Ignoring"
+                )
+                continue
+
+            mtime = item.get("ModTime", None)
+            if isinstance(mtime, str):
+                mtime = timestamp_parser(mtime, aware=True, epoch=True)
+
+            file = {
+                "rpath": item.get("Path"),
+                "apath": apath,
+                "timestamp": ts,
+                "size": item.get("Size", 0) if flag != "D" else -1,
+                "mtime": mtime,
+                "isref": 2 if flag == "R" else 0,
+                "dstinfo": True,
+            }
+            if hashes := item.get("Hashes", None):
+                file["checksum"] = hashes
+
+            for key, value in item.items():
+                if key in {"Path", "Size", "ModTime", "Hashes"} | IGNORED_FILE_DATA:
+                    continue
+                file[key] = value
+            files.append(file)
+
+        return files
 
     def insert_or_replace_many(self, files, *, insert, replace):
         """
@@ -525,11 +707,9 @@ class DFBDST:
         # ALWAYS wait before an executemany since that could lock the DB
         rows = list(rows)
 
-        db = self.db()
+        db = self._db
         with db:
             db.executemany(sql, rows)
-        # db.commit()
-        # db.close()
 
         with self.snap_file.open(mode="at") as fp:
             for file in files:
@@ -686,7 +866,12 @@ class DFBDST:
             params |= {k: v for c in conditions for k, v in c[1].items()}
 
         if not export:
-            query.append("GROUP BY apath HAVING MAX(timestamp)")
+            query.append(dedent("""
+                    -- SQLite-specific: with exactly one built-in MAX() aggregate,
+                    -- bare columns selected by '*' come from the row with that max.
+                    -- PRIMARY KEY (apath, timestamp) makes that row unique here.
+                    GROUP BY apath HAVING MAX(timestamp)
+                    """).strip())
         # query.append("ORDER BY LOWER(apath)")
 
         query = "\n".join(query)
@@ -715,10 +900,7 @@ class DFBDST:
         if add_query:
             query += "\n" + add_query
 
-        db = self.db()
-        with db:
-            r = db.execute(query, params)
-        return r
+        return self.execute(query, params)
 
     def ls(
         self,
@@ -771,7 +953,7 @@ class DFBDST:
         https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
         """
         subdir = subdir.removeprefix("./").removesuffix("/")
-        db = self.db()
+        db = self._db
 
         # This method makes essentially two queries that look a lot like snapshots
         #     1. Snapshot like query that then filters using the above-noted clever SQL
@@ -794,8 +976,7 @@ class DFBDST:
                 ]
             )
 
-        groupselect = dedent(
-            """
+        groupselect = dedent("""
             *, 
             COUNT(*) AS versions,
             SUM(
@@ -804,8 +985,7 @@ class DFBDST:
                     ELSE 0
                 END
             ) as tot_size -- Need to account for -1 vals
-            """
-        )
+            """)
 
         fquery, fparams = self._snapshot_query_builder(
             path=subdir,
@@ -853,8 +1033,7 @@ class DFBDST:
 
             params = dir_params.copy()
             if subdir:
-                query = dedent(
-                    f"""
+                query = dedent(f"""
                     WITH
                         snappaths AS (
                         QQQQ
@@ -865,20 +1044,16 @@ class DFBDST:
                             WHERE snappaths.apath LIKE :subdir
                         )
                         
-                    """
-                ).replace("QQQQ", indent(dir_query, " " * 8))
+                    """).replace("QQQQ", indent(dir_query, " " * 8))
                 params["subdir"] = f"{subdir}/%"
             else:
-                query = dedent(
-                    f"""
+                query = dedent(f"""
                     WITH
                         subpaths AS (
                         QQQQ
-                        )"""
-                ).replace("QQQQ", indent(dir_query, " " * 8))
+                        )""").replace("QQQQ", indent(dir_query, " " * 8))
 
-            query += dedent(
-                """
+            query += dedent("""
                 -- Get just the next path element
                 -- https://www.reddit.com/r/sqlite/comments/123bivr/comment/jdu9xvl/?context=3
                 SELECT DISTINCT 
@@ -892,16 +1067,15 @@ class DFBDST:
                             END
                         ) AS sub
                 FROM subpaths
-                """
-            )
-            apaths = (r["sub"] for r in db.execute(query, params))
+                """)
+            apaths = (r["sub"] for r in db.execute(query, params).fetchall())
             apaths = (apath for apath in apaths if apath.endswith("/"))
             directories = [os.path.join(subdir, apath) for apath in apaths]
 
         return directories, files
 
     def file_versions(self, filepath, count_refs=False):
-        db = self.db()
+        db = self._db
         with db:
             versions = db.execute(
                 "SELECT * FROM items WHERE apath = ? ORDER BY timestamp", (filepath,)
@@ -918,7 +1092,6 @@ class DFBDST:
                 ).fetchone()
                 file["ref_count"] = counts.get("count", default=0)
 
-        db.close()
         return versions
 
     def group_by_apath(self, select="*", conditions=None):
@@ -940,7 +1113,7 @@ class DFBDST:
 
 
         """
-        db = self.db()
+        db = self._db
 
         if conditions:
             qtxt, qvals = conditions
@@ -956,7 +1129,7 @@ class DFBDST:
                 ORDER BY
                     LOWER(apath),timestamp""",
                 qvals,
-            )
+            ).fetchall()
             Qres = map(DFBDST.fullrow2dict, Qres)
 
         row = next(Qres)

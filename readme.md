@@ -1,7 +1,7 @@
 ***
 
 > [!WARNING] 
-> This tool is still in beta but (a) I've been using it heavily for 1+ years without problems, (b) the design is such that even without it, you can get all of your files back, and (c) more testers are good! Use at your own risk but please also provide feedback
+> This tool is still in beta but (a) I've been using it heavily for 2+ years without problems, (b) the design is such that even without it, you can get all of your files back, and (c) more testers are good! Use at your own risk but please also provide feedback
 
 ***
 
@@ -13,13 +13,14 @@ Many popular backup tools — such as [macOS Time Machine][tm], [rsnapshot][rsna
 
 **dfb offers a simpler, more transparent approach:**
 
-* **Straightforward full-copy backups** — new and modified files are stored with date-tagged filenames
-* **No proprietary formats** — everything is human-readable and restorable with basic tools
-* **Cloud-ready** — uses `rclone` to support many storage providers, with optional encryption 🔐. Can also support immutable/WORM/append-only storage.
-* **Reliable and auditable** — no hidden indexes, no fragile snapshots, no surprises
+* 💾 **Straightforward full-copy backups** — new and modified files are stored with date-tagged filenames.
+* 📄 **No proprietary formats** — everything is human-readable and restorable with basic tools.
+* ☁️ **Cloud-ready** — uses `rclone` to support many storage providers, with *optional* encryption 🔐, multiple backends, and other features. Can also support immutable/WORM/append-only storage including S3 Object Lock.
+* ✅ **Reliable and auditable** — human-interpretable backups, no indexes required, no fragile snapshots, no surprises!
+
 
 > [!CAUTION] 
-> dfb is not ideal for large files with frequent small changes, as it stores full copies.
+> dfb is *not* ideal for large files with frequent small changes, as it stores full copies of new/modified files.
 
 Choose **dfb** if you value **clarity, resilience, and control** over aggressive storage optimization.
 
@@ -46,6 +47,12 @@ where the time is **_always_ in UTC (Z) time**. When a file is modified at the s
 There may also be empty directory markers named `.dfbempty.<date>` which are used to hold the empty directory on the destination.
 
 Directory names remain unchanged.
+
+### Alternate Short Format
+
+If path length is a concern, you can set `filename_timestamp_format = "base36-epoch"` in the config. New backup objects will then use an 8-character lowercase base36 UTC epoch timestamp, such as `file.00s7v4f1.txt`, instead of the default `file.20240126094501.txt`.
+
+This only affects future writes. Existing backups remain readable, and mixed histories with both formats are supported. Lexical ordering still matches chronological ordering within either format by itself, but a mixed-format history will no longer sort chronologically by filename alone.
 
 ### Reference Files
 
@@ -121,9 +128,9 @@ The database is stored in:
 
     <rclone cache dir>/DFB/<config_id from config>.db
 
-Where "`rclone cache dir`" is found from: `$ rclone config paths`. See also [Advanced Settings](docs/adv_settings.md).
+Where "`rclone cache dir`" is found from: `$ rclone config paths`.
 
-When refreshing the database, dfb will also optionally read the logs of all uploaded files to fill in source-specific metadata and hashes and speed up references. These are *secondary* to the operation of dfb and the native remote storage is sufficient to restore (up to the limitations of the remote).
+When refreshing the database, dfb will also optionally read the logs/indexes of all uploaded files to fill in source-specific metadata and hashes, and speed up resolving reference files. These are *secondary* to the operation of dfb and the native remote storage is sufficient to restore (up to the limitations of the remote).
 
 ## Pruning
 
@@ -142,7 +149,7 @@ Files *older* than the specified time or verion number may still exist if they a
 
 ### Pruning individual files (Advanced)
 
-Pruning individual files is supported through the `advanced` sub command. You need to know the "real-path" or "rpath" of the file. Assume `$DFB_CONFIG_FILE` is set for these examples.
+Pruning individual files is supported through the `advanced` sub command. You need to know the "real-path" or "rpath" of the file. Assume `$DFB_CONFIG` is set for these examples.
 
 For example, if you want to delete `my/large/file.ext`, you can do:
 
@@ -162,19 +169,25 @@ You can, of course, do it all manually but (a) it won't check/delete references 
 <!--- Auto Generated -->
 <!--- DO NOT MODIFY. WILL NOT BE SAVED -->
 - [(ADVANCED) Reading Backup and Prune `--dump` files](docs/adv_backup_dump_format.md)
+- [DFB Auxiliary Artifact Specification (Draft)](docs/aux_format_spec.md)
+- [Base36 Epoch Filename Timestamp Design](docs/base36_epoch_design.md)
 - [Changelog](docs/changelog.md)
 - [CLI Help](docs/CLI_help.md)
 - [Using dfb with cold storage](docs/cold_storage.md)
 - [Compare Setting Guidance](docs/compare_settings.md)
 - ["FAQs"](docs/FAQs.md)
-- [Mount (EXPERIMENTAL)](docs/mount.md)
+- [DFB Backup Object Format Specification (Draft)](docs/format_spec.md)
+- [Metadata Restore](docs/metadata_restore.md)
+- [Mount](docs/mount.md)
 - [Symlink Update](docs/symlink_update.md)
 <!--- END AUTO GENERATED -->
 
 ## Known Issues
 
-- Logging in `dfb-mount` is not complete nor does it make much sense at the moment.
-- Even with logs of files using source data, restore *always* directly uses the remote. Future versions may offer a secondary method to restore that information for certain remotes.
-    - Example: If the remote doesn't support mtime, even if mtime is used for backups based on the logs and local database, restore will not restore mtime.
-- Deletes are marked with a 3 byte file (just ASCII encoded `DEL`). This is smaller than most block sizes so they take more space on a local filesystem.
+- Logging in `dfb mount` is not complete nor does it make much sense at the moment.
+- `dfb mount` requires `mfusepy` (`python -m pip install dfb[mount]` or `python -m pip install mfusepy`) and a working FUSE install; see `docs/mount.md`.
+- `dfb mount` empty-directory removal can be expensive for deep trees; use `--empty-check-depth` or leave it disabled (see `docs/mount.md`). Use `--show-deleted` to surface deletions as `[DEL]`.
+- Restore still reads file contents from the backup object on the remote. However, it can optionally replay source-origin metadata already stored in the local DB (and also preserved in logs/snapshots when available) during the restore copy call.
+    - Example: If the source have ModTime but the destination does not, when restoring through DFB, it can try to apply the metadata during the restore.
+- Deletes are marked with a 3 byte file (just ASCII encoded `DEL`). This is smaller than most filesystem block sizes so they take more space on a local filesystem.
 - It is assumed that the source does not change from when listing to backing up. If a file is deleted in the iterim, it could cause an error. If it is modified, there may be a future false-positive (which is a safe scenario).

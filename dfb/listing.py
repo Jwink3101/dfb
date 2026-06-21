@@ -59,12 +59,10 @@ def tree(config):
 
     args = config.cliconfig
     dstdb = DFBDST(config)
-    groupselect = dedent(
-        """
+    groupselect = dedent("""
         * 
         -- LENGTH(apath) - LENGTH(REPLACE(apath, '/', '')) AS depth -- not used
-        """
-    )
+        """)
     path = args.path.removesuffix("/").removeprefix("./")
 
     conditions = []

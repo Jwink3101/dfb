@@ -299,10 +299,8 @@ def test_modes():
     # -
 
 
-#     prune = test.call("prune", "u6", "--shell-script", "-")
 #     print(prune.rpaths)
 #
-#     prune = test.call("prune", "u6", "--shell-script", "prune.sh")
 #     print(prune.rpaths)
 #     with open("prune.sh") as fp:
 #         print(fp.read())
@@ -363,6 +361,26 @@ def test_subdir():
         ("sub2/move_at_5.19700101000001.txt", 9),
         ("sub2/move_at_5.19700101000005D.txt", -1),
     }
+
+
+def test_subdir_does_not_prune_outside_referent():
+    test = testutils.Tester(name="prune_subdir_outside_referent")
+    test.config["renames"] = "hash"
+    test.config["compare"] = "hash"
+    test.write_config()
+
+    test.write_pre("src/out.txt", "outside")
+    test.backup("-q", offset=1)
+
+    test.move("src/out.txt", "src/sub1/in.txt")
+    test.backup("-q", offset=3)
+
+    test.write_post("src/sub1/in.txt", "inside-new")
+    test.backup("-q", offset=5)
+
+    prune = test.call("prune", "--dry-run", "u6", "--subdir", "sub1", "-q", offset=7)
+    assert set(prune.rpaths) == {("sub1/in.19700101000003R.txt", 0)}
+    assert all(rpath.startswith("sub1/") for rpath, _ in prune.rpaths)
 
 
 def test_disable():
@@ -549,6 +567,17 @@ def test_prune_file():
         "move2.19700101000005R.txt",
     ):
         assert not (test.pwd / "dst" / path).exists()
+
+    with test.dstdb.db() as db:
+        res = db.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM items
+            WHERE rpath = ?
+            """,
+            ("move0.19700101000001.txt",),
+        ).fetchone()
+    assert res["c"] == 0
 
 
 def test_prune_errors():

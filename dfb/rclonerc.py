@@ -264,8 +264,8 @@ class RC:
             f"http://{self.user}:{self.password}@{self.addr}",
             f"[{fs}]/{file}",
         )
-        res = requests.head(file_url)
-        return res.headers
+        with requests.head(file_url) as res:
+            return dict(res.headers)
 
     def read(self, src, start=0, end=None):
         """
@@ -312,10 +312,10 @@ class RC:
         if end is None:
             end = ""
 
-        res = requests.get(file_url, headers={"Range": f"bytes={start}-{end}"})
-        if res.status_code == 404:
-            raise ValueError("Not Found or range too far")
-        return res.content
+        with requests.get(file_url, headers={"Range": f"bytes={start}-{end}"}) as res:
+            if res.status_code == 404:
+                raise ValueError("Not Found or range too far")
+            return res.content
 
     def open(
         self,
@@ -608,12 +608,12 @@ class RC:
             + urllib.parse.urlencode(params)
         )
 
-        resp = requests.post(
+        with requests.post(
             url,
             auth=HTTPBasicAuth(self.user, self.password),
             **postkw,
-        )
-        res = resp.json()
+        ) as resp:
+            res = resp.json()
 
         # This is developer-level debug. Comment out for now
         # logger.debug(f"call {res = }")

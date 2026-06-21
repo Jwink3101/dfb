@@ -2,10 +2,44 @@
 
 (newest on top)
 
+## 20260621.0b0
+
+### Major:
+
+- Added opt-in restore-time DB-backed metadata replay, including live-source policy controls and documentation for accepted metadata families and current limitations
+- Added optional `filename_timestamp_format = "base36-epoch"` for shorter backup object names. It will accept mixed datetag/base36 histories, and added `dfb utils tsconv` plus explicit `utils apath2rpath --format` support. This means a tag goes from 15 characters to 9 (including the extra dot)
+- Added `advanced lsjson-import` and `advanced refresh-refs`, plus `--refresh-references` controls on refresh-backed workflows to manage reference resolution explicitly
+- Added a formal backup format specification and auxiliary artifact specification covering object naming, tolerant parsing, JSONL logs/snapshots, reference markers, and recovery expectations
+
+### Potentially Breaking:
+
+- Removed restore-side `--shell-script` support with no compatibility alias. Restore automation must use the normal restore path or another manual workflow.
+- Removed the legacy `dfb-link` helper package and script now that `dfb mount` covers the main browsing use case.
+- Replaced `setup.py` packaging with `pyproject.toml` metadata and scripts. Editable installs should use the pyproject-backed install path.
+
+### Improved:
+
+- Much improved `dfb mount` command and as a first-class tool. Still wraps an rclone mount or local backup.
+- Added an additional database index that will help with some activities. Note, will not be added unless (a) a new database is created or (b) you use dbimport with prune
+- Fixed `prune --subdir` so it does not delete referents outside the selected subdirectory
+- Fixed backup `Current` stats so moved-by-reference files count toward the logical current backup size in run statistics.
+- Fixed SQLite and rclone RC descriptor leaks that could surface as "too many open files" during large backups or snapshot-heavy operations.
+- Reworked `DFBDST` to use a shared SQLite connection per object, with explicit close/reconnect handling for long-lived helpers.
+- Improved `build_help.py` coverage so generated CLI help and readme command indexes stay current.
+
+### Minor:
+
+- Added an alpha `utils/export-by-timestamp` helper for incrementally exporting DB state grouped by backup timestamps
+- Added `python -m dfb` support and replaced the old top-level `dfb.py` script with `dfb-cli.py` to avoid package shadowing
+- Added Black target-version configuration for Python 3.13 formatting compatibility
+- Updated the readme to document the optional short filename timestamp format and corrected the restore metadata note to reflect current DB-backed metadata replay behavior
+
+*Generative AI Disclosure*: OpenAI Codex, with various OpenAI models, were used extensively in these changes. Code has been reviewed and tested.
+
 ## 20250711.0BETA
 
 - Improved bug fix from last version.
-- Adds $DFB_DEBUG_RAISE_EXCEPTION environment variable to help debug by raising exception even if not in verbose mode
+- Adds `$DFB_DEBUG_RAISE_EXCEPTION` environment variable to help debug by raising exception even if not in verbose mode
 
 ## 20250710.0BETA
 

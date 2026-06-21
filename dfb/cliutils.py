@@ -3,7 +3,8 @@ import logging
 import sys
 
 from . import apath2rpath, nowfun, rpath2apath
-from .utils import timestamp_parser
+from .timestamps import timestamp_parser
+from .utils import format_timestamp_tag, time2all, timestamp_to_epoch
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,10 @@ def cli_apath2rpath(cliconfig):
         sys.exit(2)
 
     if cliconfig.date:
-        ts = timestamp_parser(cliconfig.date, aware=True)
+        ts = timestamp_to_epoch(cliconfig.date)
     else:
-        ts = nowfun().obj
-    rpaths = [apath2rpath(apath, ts=ts) for apath in apaths]
+        ts = nowfun().ts
+    rpaths = [apath2rpath(apath, ts=ts, fmt=cliconfig.format) for apath in apaths]
 
     sep = b"\x00" if cliconfig.print0 else b"\n"
     out = sep.join(rpath.encode() for rpath in rpaths)
@@ -64,5 +65,26 @@ def cli_rpath2apath(cliconfig):
 
         datestr = date.isoformat()
         res = {"apath": apath, "timestamp": datestr, "flag": flag}
+
+        print(json.dumps(res, indent=None, separators=(",", ":")), flush=True)
+
+
+def cli_tsconv(cliconfig):
+    for raw in cliconfig.values:
+        ts = timestamp_to_epoch(raw)
+        allts = time2all(ts)
+        res = {
+            "input": raw,
+            "timestamp": timestamp_parser(ts).isoformat(),
+            "datetag": allts.dt,
+            "base36_epoch": format_timestamp_tag(ts, fmt="base36-epoch"),
+        }
+
+        if cliconfig.raw:
+            print(
+                res["datetag"] if cliconfig.to == "datetag" else res["base36_epoch"],
+                flush=True,
+            )
+            continue
 
         print(json.dumps(res, indent=None, separators=(",", ":")), flush=True)

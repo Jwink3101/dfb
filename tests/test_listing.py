@@ -337,37 +337,28 @@ def test_listing():
 
     with Capture() as cap:
         test.call("timestamps")
-    assert [l.strip() for l in cap.out.splitlines()] == [
-        l.strip()
-        for l in """\
+    assert [l.strip() for l in cap.out.splitlines()] == [l.strip() for l in """\
                    Timestamp  Total  Deleted  Moved  Size
         1970-01-01T00:00:01Z      5        0      0  52
         1970-01-01T00:00:02Z      4        1      1  7
         1970-01-01T00:00:03Z      5        2      2  8
         1970-01-01T00:00:04Z      4        1      2  9
-        """.strip().splitlines()
-    ]
+        """.strip().splitlines()]
 
     with Capture() as cap:
         test.call("timestamps", "sub4")
-    assert [l.strip() for l in cap.out.splitlines()] == [
-        l.strip()
-        for l in """\
+    assert [l.strip() for l in cap.out.splitlines()] == [l.strip() for l in """\
                    Timestamp  Total  Deleted  Moved  Size
         1970-01-01T00:00:04Z      1        0      1  0
-        """.strip().splitlines()
-    ]
+        """.strip().splitlines()]
 
     with Capture() as cap:
         test.call("timestamps", "sub2")
-    assert [l.strip() for l in cap.out.splitlines()] == [
-        l.strip()
-        for l in """\
+    assert [l.strip() for l in cap.out.splitlines()] == [l.strip() for l in """\
                      Timestamp  Total  Deleted  Moved  Size
           1970-01-01T00:00:02Z      1        0      1  0
           1970-01-01T00:00:03Z      1        1      1  0
-        """.strip().splitlines()
-    ]
+        """.strip().splitlines()]
 
     test.call("timestamps", "--human")
 
@@ -488,9 +479,7 @@ def test_listing():
     ## Summary
     with Capture() as cap:
         test.call("summary")
-    assert [l.strip() for l in cap.out.splitlines()] == [
-        l.strip()
-        for l in """\
+    assert [l.strip() for l in cap.out.splitlines()] == [l.strip() for l in """\
                 Path:  '/'
                After:  <<earliest>>
               Before:  <<latest>>
@@ -499,14 +488,11 @@ def test_listing():
              Deleted:  4
                Moved:  5
                 Size:  76 (76 B)
-        """.strip().splitlines()
-    ]
+        """.strip().splitlines()]
 
     with Capture() as cap:
         test.call("summary", "--after", "u2")
-    assert [l.strip() for l in cap.out.splitlines()] == [
-        l.strip()
-        for l in """\
+    assert [l.strip() for l in cap.out.splitlines()] == [l.strip() for l in """\
                 Path:  '/'
                After:  'u2'
               Before:  <<latest>>
@@ -515,8 +501,7 @@ def test_listing():
              Deleted:  4
                Moved:  5
                 Size:  24 (24 B)
-        """.strip().splitlines()
-    ]
+        """.strip().splitlines()]
 
 
 def test_del():
@@ -641,10 +626,7 @@ def test_tree():
 
     test.backup(offset=1)
 
-    assert (
-        test.tree().strip()
-        == dedent(
-            """
+    assert test.tree().strip() == dedent("""
         /
         ├── file1.txt
         ├── file2.txt
@@ -661,27 +643,17 @@ def test_tree():
         └── sub3/
             └── ssub3/
                 └── file9.txt
-        """
-        ).strip()
-    )
+        """).strip()
 
-    assert (
-        test.tree("--max-depth", "1").strip()
-        == dedent(
-            """
+    assert test.tree("--max-depth", "1").strip() == dedent("""
         /
         ├── file1.txt
         ├── file2.txt
         ├── sub1/
         ├── sub2/
         └── sub3/
-        """
-        ).strip()
-    )
-    assert (
-        test.tree("--max-depth", "2").strip()
-        == dedent(
-            """
+        """).strip()
+    assert test.tree("--max-depth", "2").strip() == dedent("""
         /
         ├── file1.txt
         ├── file2.txt
@@ -694,44 +666,29 @@ def test_tree():
         │   └── ssub2/
         └── sub3/
             └── ssub3/
-        """
-        ).strip()
-    )
-    assert (
-        test.tree("sub1").strip()
-        == dedent(
-            """
+        """).strip()
+    assert test.tree("sub1").strip() == dedent("""
         sub1/
         ├── file3.txt
         ├── file4.txt
         └── ssub1/
             ├── file5.txt
             └── file6.txt
-        """
-        ).strip()
-    )
+        """).strip()
 
-    assert (
-        test.tree("sub1", "--max-depth", "1").strip()
-        == dedent(
-            """
+    assert test.tree("sub1", "--max-depth", "1").strip() == dedent("""
             sub1/
             ├── file3.txt
             ├── file4.txt
             └── ssub1/
-            """
-        ).strip()
-    )
+            """).strip()
 
     os.unlink("src/sub1/ssub1/file5.txt")
     test.write_post("src/sub3/ssub3/file9.txt", "nine")
 
     test.backup(offset=3)
 
-    assert (
-        test.tree("--del").strip()
-        == dedent(
-            """
+    assert test.tree("--del").strip() == dedent("""
             /
             ├── file1.txt
             ├── file2.txt
@@ -748,38 +705,23 @@ def test_tree():
             └── sub3/
                 └── ssub3/
                     └── file9.txt
-            """
-        ).strip()
-    )
+            """).strip()
 
-    assert (
-        test.tree("--del", "--del").strip()
-        == dedent(
-            """
+    assert test.tree("--del", "--del").strip() == dedent("""
             /
             └── sub1/
                 └── ssub1/
                     └── file5.txt (DEL)
-            """
-        ).strip()
-    )
+            """).strip()
 
-    assert (
-        test.tree("--after", "u2").strip()
-        == dedent(
-            """
+    assert test.tree("--after", "u2").strip() == dedent("""
             /
             └── sub3/
                 └── ssub3/
                     └── file9.txt
-            """
-        ).strip()
-    )
+            """).strip()
 
-    assert (
-        test.tree("--after", "u2", "--del").strip()
-        == dedent(
-            """
+    assert test.tree("--after", "u2", "--del").strip() == dedent("""
             /
             ├── sub1/
             │   └── ssub1/
@@ -787,9 +729,7 @@ def test_tree():
             └── sub3/
                 └── ssub3/
                     └── file9.txt
-        """
-        ).strip()
-    )
+        """).strip()
 
     ## Now test recursive even though it's included above
     # print('\n'.join(f"{i!r}," for i in sorted(items)))
