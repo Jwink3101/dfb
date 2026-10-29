@@ -58,3 +58,7 @@
 2026-06-20 13:43 MDT - Removed an unnecessary rclone RC test stderr logging handler that could emit after pytest closed captured streams.
 2026-06-20 13:43 MDT - Reworked `DFBDST` to keep one shared SQLite connection per object and made tests explicitly reconnect long-lived helper handles after CLI commands.
 2026-06-21 09:46 MDT - Incorporated the full post-5b34aa7 change set into the current `docs/changelog.md` NEXT entry.
+2026-10-20 13:41 MDT - Versioned the backup object specification as 1.1.1, added retroactive 1.1.0/1.0.0 history, and clarified per-object timestamp and one-second precision semantics for continuous writers.
+2026-10-28 16:51 MDT - Added per-thread rclone RC HTTP sessions, bounded connection-only retries with backoff, shutdown cleanup, and regression coverage for connection reuse, concurrent workers, and avoiding repeated submitted operations.
+2026-10-28 16:58 MDT - Retained prune DB records on failed deletions with partial-failure reporting, added cancellation/join cleanup and source-error propagation to the thread mapper, and added prune/snapshot and subprocess hang regressions; 28 focused prune, worker, RC, backup, and restore tests passed with Black/isort checks.
+2026-10-28 17:25 MDT - Updated the changelog and prepared the RC connection reuse, prune failure handling, and worker cleanup fixes for commit; retained the 28-test validation results.

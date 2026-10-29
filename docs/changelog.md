@@ -2,6 +2,17 @@
 
 (newest on top)
 
+## 20261029.0b0
+
+Bug fixes.
+
+- Reuse rclone RC HTTP connections per thread to reduce temporary TCP port exhaustion during large restores and backups. Retry connection-establishment failures up to three times with backoff, and close sessions when the RC client stops.
+- Prune now retains database records for failed remote deletions, publishes only successful prune records, and reports an overall failure after processing the remaining files. This includes deletion errors for already-missing files; use refresh to reconcile those records.
+- Clean up thread mapper workers and producer on errors or explicit iterator close, and propagate source iteration failures instead of leaving workers waiting indefinitely. Cancel queued work and wait for calls already in progress to finish before returning.
+- File spec update for clarity and versioning.
+
+*Generative AI Disclosure*: OpenAI Codex, with various OpenAI models, were used extensively in these changes. Code has been reviewed and tested.
+
 ## 20260621.0b0
 
 ### Major:

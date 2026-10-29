@@ -1,13 +1,20 @@
 import hashlib
+import json
 import logging
 import os
 import shutil
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from textwrap import dedent
+from threading import Barrier, Thread
 
 # 3rd Party
 import pytest
+import requests
+from urllib3.util import connection
+from urllib3.util.retry import Retry
 
 if (p := os.path.abspath("../")) not in sys.path:
     sys.path.insert(0, p)
@@ -24,6 +31,121 @@ def rmdir(path):
         shutil.rmtree(path)
     except OSError:
         pass
+
+
+@pytest.fixture
+def http_rc(monkeypatch):
+    """Exercise the real HTTP client against a persistent local connection."""
+    clients = []
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_POST(self):
+            clients.append(self.client_address)
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            if self.path.startswith("/disconnect"):
+                self.close_connection = True
+                return
+            error = self.path.startswith("/error")
+            body = json.dumps({"error": "test error"} if error else {}).encode()
+            self.send_response(500 if error else 200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    rc = RC()
+    rc.addr = f"127.0.0.1:{server.server_port}"
+    monkeypatch.setattr(rc, "start", lambda: rc)
+    try:
+        yield rc, clients
+    finally:
+        rc.stop()
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def test_http_connection_reuse_and_cleanup(http_rc, monkeypatch):
+    rc, clients = http_rc
+    for _ in range(5):
+        assert rc.call("rc/noop") == {}
+    assert len(set(clients)) == 1
+
+    barrier = Barrier(3)
+
+    def worker(_):
+        barrier.wait(timeout=5)
+        for _ in range(5):
+            rc.call("rc/noop")
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        list(pool.map(worker, range(3)))
+    assert len(clients) == 20
+    assert len(set(clients)) == 4  # Main thread plus three worker connections.
+
+    closed = []
+    sessions = list(rc._sessions)
+    for session in sessions:
+        close = session.close
+
+        def record_close(session=session, close=close):
+            closed.append(session)
+            close()
+
+        monkeypatch.setattr(session, "close", record_close)
+    rc.stop()
+    rc.stop()  # Cleanup is idempotent.
+    assert closed == sessions
+    assert not rc._sessions
+    rc.call("rc/noop")
+    assert len(set(clients)) == 5  # Closed sessions aren't reused.
+
+
+@pytest.mark.parametrize("recover", [True, False])
+def test_http_connect_retries(http_rc, monkeypatch, recover):
+    rc, clients = http_rc
+    connect = connection.create_connection
+    attempts = []
+    sleeps = []
+
+    def flaky_connect(*args, **kwargs):
+        attempts.append(args)
+        if not recover or len(attempts) < 4:
+            raise OSError(49, "Can't assign requested address")
+        return connect(*args, **kwargs)
+
+    def record_backoff(retry, response=None):
+        sleeps.append(retry.get_backoff_time())
+
+    monkeypatch.setattr(connection, "create_connection", flaky_connect)
+    monkeypatch.setattr(Retry, "sleep", record_backoff)
+    if recover:
+        assert rc.call("rc/noop") == {}
+        assert len(clients) == 1
+    else:
+        with pytest.raises(requests.ConnectionError):
+            rc.call("rc/noop")
+        assert not clients
+    assert len(attempts) == 4
+    assert sleeps == [0, 1, 2]
+
+
+@pytest.mark.parametrize("endpoint", ["disconnect", "error"])
+def test_http_does_not_repeat_submitted_operations(http_rc, endpoint):
+    rc, clients = http_rc
+    error = (
+        requests.ConnectionError if endpoint == "disconnect" else rclonerc.RcloneError
+    )
+    with pytest.raises(error):
+        rc.call(endpoint)
+    assert len(clients) == 1
 
 
 # do all tests in one  since it can then use the same rc
@@ -218,6 +340,9 @@ def test_main():
 
     rc.check()
     rc.start(check=True)
+    rc.stop()
+    assert not rc._started
+    assert not rc._sessions
     rc.stop()
 
 

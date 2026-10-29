@@ -22,6 +22,7 @@ import pytest
 import testutils
 
 from dfb.prune import BrokenReferenceError
+from dfb.rclonerc import RC
 
 
 def test_basic_cases():
@@ -580,7 +581,8 @@ def test_prune_file():
     assert res["c"] == 0
 
 
-def test_prune_errors():
+@pytest.mark.parametrize("failure", ["missing", "connection", "permission"])
+def test_prune_errors(monkeypatch, failure):
     """
     Handle when the delete doesn't work
     """
@@ -594,29 +596,42 @@ def test_prune_errors():
 
     assert len(list(test.dstdb.snapshot(export=True))) == 3
 
-    # Fail because it was deleted
-    os.unlink("dst/file.19700101000001.txt")
+    failed_rpath = "file.19700101000001.txt"
+    if failure == "missing":
+        os.unlink(f"dst/{failed_rpath}")
+    else:
+        delete = RC.delete
 
-    prune = test.call("prune", "now")  # -v will make it error
+        def fail_one_delete(rc, path, **kwargs):
+            if path[1] == failed_rpath:
+                error = ConnectionError if failure == "connection" else PermissionError
+                raise error("injected prune failure")
+            return delete(rc, path, **kwargs)
 
-    # Make sure the files aren't there
-    assert not os.path.exists("dst/file.19700101000001.txt")
+        monkeypatch.setattr(RC, "delete", fail_one_delete)
+
+    with pytest.raises(ValueError, match="database records retained"):
+        test.call("prune", "now", "-vv")
+
+    assert os.path.exists(f"dst/{failed_rpath}") == (failure != "missing")
     assert not os.path.exists("dst/file.19700101000003.txt")
 
-    # ...including in the db
-    assert len(list(test.dstdb.snapshot(export=True))) == 1
+    rows = list(test.dstdb.snapshot(export=True))
+    assert {row["rpath"] for row in rows} == {
+        failed_rpath,
+        "file.19700101000005.txt",
+    }
+    # Published prune records describe successful deletions only.
+    pruned = []
+    for path in Path("dst/.dfb/snapshots").rglob("*.jsonl.gz"):
+        with gz.open(path, "rt") as fp:
+            pruned.extend(
+                row["rpath"]
+                for line in fp
+                if (row := json.loads(line)).get("_action") == "prune"
+            )
+    assert pruned == ["file.19700101000003.txt"]
 
 
 if __name__ == "__main__":
-    test_basic_cases()
-    test_moves()
-    test_modes()
-    test_subdir()
-    test_disable()
-    test_basic_versions()
-    test_prune_file()
-    test_prune_errors()
-
-    print("=" * 50)
-    print(" All Passed ".center(50, "="))
-    print("=" * 50)
+    sys.exit(pytest.main([__file__]))

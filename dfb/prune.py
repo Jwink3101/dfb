@@ -165,24 +165,24 @@ class Prune:
                 rc.delete((self.config.dst, rpath))
             except Exception as EE:
                 logger.error(
-                    f"Could not prune {rpath!r}. " f"Will assume it is deleted. {EE}"
+                    f"Could not prune {rpath!r}. Keeping database records. {EE}"
                 )
                 with LOCK:
                     self.errcount += 1
+                return None
             return rpath
 
         rpaths = tmap(_delete, rpaths, Nt=self.config.concurrency)
-        # Originally we didn't remove the file if there was an error but it's changed
-        # now. First of all, the most likely error is that the file is already missing
-        # so this updates the DB. If not, the worst that happens in that it remains and
-        # goes unnoticed until a refresh. Future dfb versions may be smarter about what
-        # types of errors it handles.
-        # rpaths = filter(bool, rpaths)  # Remove errors
+        rpaths = (rpath for rpath in rpaths if rpath is not None)
         rpaths = map(self.dstdb.delete_rpath, rpaths)  # on main thread only
         for _ in rpaths:
             pass
 
         self.dstdb.push_snapshots()
+        if self.errcount:
+            raise ValueError(
+                f"Could not prune {self.errcount} file(s); database records retained."
+            )
 
     def summary(self):
         _p = logger.debug

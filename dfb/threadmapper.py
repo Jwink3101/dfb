@@ -1,7 +1,7 @@
 import logging
 import os
-from queue import Queue
-from threading import Thread
+from queue import Empty, Full, Queue
+from threading import Event, Thread
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,13 @@ def thread_map_unordered(
         This can also be used, if needed, to know whether the exception came from this function or 'fun'
         in the off chance that an exception is a valid return from 'fun'.
 
+    Notes
+    -----
+    Source iteration errors always propagate. On failure or explicit iterator
+    close(), queued work is cancelled and all threads are joined. Calls already
+    running (including source iteration) must finish before cleanup can return.
+    Close the iterator explicitly if stopping consumption early.
+
 
     Why:
     ----
@@ -103,9 +110,8 @@ def thread_map_unordered(
 
     (2) Can automatically wrap exceptions without an additional code. See options above
     """
-    # Use to know if an exceptoion was raised here and ONLY here. Will be replaced
-    thread_map_unordered_exception = os.urandom(5)
     kill = _KILL()
+    stopped = Event()
 
     Nt = Nt or os.cpu_count()
 
@@ -113,60 +119,75 @@ def thread_map_unordered(
     qin = Queue(maxsize=Nin_buffer)
     qout = Queue(maxsize=Nout_buffer or Nt)
 
-    def _adder():
-        for ii, item in enumerate(seq):
-            qin.put((ii, item))
-        for _ in range(Nt):
-            qin.put((-1, kill))
+    def _put(queue, item):
+        while not stopped.is_set():
+            try:
+                queue.put(item, timeout=0.05)
+                return True
+            except Full:
+                pass
+        return False
 
-    adder_thread = Thread(target=_adder)
-    adder_thread.start()
+    def _adder():
+        try:
+            for ii, item in enumerate(seq):
+                if not _put(qin, (ii, item)):
+                    break
+        except BaseException as error:
+            # Source iteration errors must reach the consumer too; otherwise
+            # workers would wait forever for input or completion sentinels.
+            _put(qout, (None, error, True))
+        finally:
+            for _ in range(Nt):
+                if not _put(qin, (-1, kill)):
+                    break
 
     def _worker():
-        while True:
-            ii, item = qin.get()
+        while not stopped.is_set():
+            try:
+                ii, item = qin.get(timeout=0.05)
+            except Empty:
+                continue
             if item is kill:
-                qout.put(item)
-                qin.task_done()
+                _put(qout, kill)
                 break
 
+            if stopped.is_set():
+                break
+            failed = False
             try:
                 res = fun(item)
-            except Exception as _res:
-                res = _res  # I don't get it but this is needed
-                res.seq_index = ii
-                res.thread_map_unordered_exception = thread_map_unordered_exception
+            except BaseException as error:
+                res = error
+                failed = True
 
-            qout.put(res)
-            qin.task_done()
+            if not _put(qout, (ii, res, failed)):
+                break
 
+    adder_thread = Thread(target=_adder)
     worker_threads = [Thread(target=_worker) for _ in range(Nt)]
-    for worker_thread in worker_threads:
-        worker_thread.start()
+    started_threads = []
+    try:
+        for thread in [*worker_threads, adder_thread]:
+            thread.start()
+            started_threads.append(thread)
 
-    tcount = 0
-    while tcount < Nt:
-        res = qout.get()
-
-        # Handle exceptions back in the main thread
-        if (
-            isinstance(res, Exception)
-            and getattr(res, "thread_map_unordered_exception", False)
-            == thread_map_unordered_exception
-        ):
-            res.thread_map_unordered_exception = True  # reset
-            if raise_exceptions:
-                raise res
-
-        if res is kill:
-            tcount += 1
-            qout.task_done()
-            continue
-        yield res
-        qout.task_done()
-
-    qin.join()
-    qout.join()
-    adder_thread.join()
-    for worker_thread in worker_threads:
-        worker_thread.join()
+        tcount = 0
+        while tcount < Nt:
+            outcome = qout.get()
+            if outcome is kill:
+                tcount += 1
+                continue
+            ii, res, failed = outcome
+            if failed:
+                res.seq_index = ii
+                res.thread_map_unordered_exception = True
+                if raise_exceptions or ii is None or not isinstance(res, Exception):
+                    raise res
+            yield res
+    finally:
+        stopped.set()
+        # Running function calls/source iteration must finish, but no thread
+        # remains blocked on a full output/input queue after the consumer exits.
+        for thread in started_threads:
+            thread.join()

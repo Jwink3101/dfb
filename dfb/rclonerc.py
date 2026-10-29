@@ -17,10 +17,12 @@ import urllib.parse
 from collections import defaultdict
 from functools import cache, partialmethod
 from queue import Queue
-from threading import Thread
+from threading import Lock, Thread, local
 
 import requests
+from requests.adapters import HTTPAdapter
 from requests.auth import HTTPBasicAuth
+from urllib3.util.retry import Retry
 
 from .cli import ThrowingArgumentParser, ThrowingArgumentParserError
 from .timestamps import timestamp_parser
@@ -87,6 +89,38 @@ class RC:
 
         self._started = False
         self._exit = False
+        self._session_local = local()
+        self._sessions = []
+        self._sessions_lock = Lock()
+
+    def _get_session(self):
+        """Reuse connections within each thread without sharing session state."""
+        if (session := getattr(self._session_local, "session", None)) is None:
+            session = requests.Session()
+            # Retry only failures before a connection is established. Retrying a
+            # read failure could repeat an operation already executed by rclone.
+            retries = Retry(
+                total=3,
+                connect=3,
+                read=0,
+                status=0,
+                other=0,
+                backoff_factor=0.5,
+            )
+            session.mount("http://", HTTPAdapter(max_retries=retries))
+            self._session_local.session = session
+            with self._sessions_lock:
+                self._sessions.append(session)
+        return session
+
+    def _close_sessions(self):
+        # stop() is called after workers finish, including sessions belonging to
+        # threads that have already exited.
+        with self._sessions_lock:
+            for session in self._sessions:
+                session.close()
+            self._sessions.clear()
+            self._session_local = local()
 
     def __enter__(self):
         self.start()
@@ -109,6 +143,7 @@ class RC:
         if self._started:
             return self
 
+        self._exit = False
         logger.debug("Starting rclone rc server")
         logger.debug(f"http://{self.user}:{self.password}@{self.addr}")
 
@@ -169,9 +204,10 @@ class RC:
             raise ValueError("Failed to start server")
 
     def stop(self):
-        logger.debug("stopping rclone rc server")
         if not self._started:
+            self._close_sessions()
             return
+        logger.debug("stopping rclone rc server")
         self._exit = True
 
         try:
@@ -179,14 +215,18 @@ class RC:
         except:
             pass
 
-        self.proc.send_signal(signal.SIGINT)
         try:
-            self.proc.wait(timeout=0.25)
-        except:
+            self.proc.send_signal(signal.SIGINT)
             try:
-                self.proc.send_signal(signal.SIGKILL)
+                self.proc.wait(timeout=0.25)
             except:
-                pass
+                try:
+                    self.proc.send_signal(signal.SIGKILL)
+                except:
+                    pass
+        finally:
+            self._started = False
+            self._close_sessions()
         return self
 
     def _cpmvfile(self, *, cpmv, src, dst, use_async=False, **params):
@@ -264,7 +304,7 @@ class RC:
             f"http://{self.user}:{self.password}@{self.addr}",
             f"[{fs}]/{file}",
         )
-        with requests.head(file_url) as res:
+        with self._get_session().head(file_url) as res:
             return dict(res.headers)
 
     def read(self, src, start=0, end=None):
@@ -312,7 +352,9 @@ class RC:
         if end is None:
             end = ""
 
-        with requests.get(file_url, headers={"Range": f"bytes={start}-{end}"}) as res:
+        with self._get_session().get(
+            file_url, headers={"Range": f"bytes={start}-{end}"}
+        ) as res:
             if res.status_code == 404:
                 raise ValueError("Not Found or range too far")
             return res.content
@@ -608,7 +650,7 @@ class RC:
             + urllib.parse.urlencode(params)
         )
 
-        with requests.post(
+        with self._get_session().post(
             url,
             auth=HTTPBasicAuth(self.user, self.password),
             **postkw,

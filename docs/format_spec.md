@@ -14,9 +14,19 @@ The intended properties are:
 
 ## Status
 
+Specification version: **1.1.1**.
+
 Draft for review. Intended to define a stable, tool-optional format contract for backups written by `dfb` and interpreted by compatible tools.
 
+The specification version identifies revisions to this contract; it is not serialized in backup object names. Compatible readers determine an object's encoding from the filename grammar described below.
+
 Design rationale for the optional `base36-epoch` encoding is documented separately in [docs/base36_epoch_design.md](./base36_epoch_design.md).
+
+### Version History
+
+1. **1.1.1**: Clarified that timestamps identify individual object events rather than backup sessions, made one-second precision explicit, and documented continuous-writer behavior. Writers may use different timestamps within one operation, enabling continuous-backup producers without changing the object format.
+2. **1.1.0**: Added the optional `base36-epoch` timestamp encoding and required readers to accept both timestamp encodings.
+3. **1.0.0**: Retroactive designation for the original `datetag`-only object format.
 
 ## Scope
 
@@ -101,6 +111,31 @@ Valid full tag grammar:
 3. `<flag?> := "" | "D" | "R"`
 
 Any token not matching this shape is not a valid `dfb` tag.
+
+### Timestamp Event Semantics
+
+1. A timestamp identifies the effective time of an individual object event, not necessarily a backup session or tool invocation.
+2. Writers may assign one timestamp to every object in an operation, or assign timestamps independently as events occur.
+3. Objects written by one operation may have different timestamps, and unrelated objects may share a timestamp.
+4. Readers must derive history from individual timestamped objects and must not require timestamp equality to identify a complete backup session.
+5. No ordering is defined between multiple logically ordered events for the same `apath` at the same timestamp. Because timestamp tags have one-second resolution, writers should avoid producing such events, for example by coalescing them or assigning distinct timestamps.
+6. Writers may use a shared timestamp for related multi-object events when they intend those events to appear simultaneous in point-in-time views.
+
+### Timestamp Precision
+
+1. Timestamp tags have exactly one-second precision.
+2. Fractional seconds are not represented and must not be inferred from an object name.
+3. Both `datetag` and `base36-epoch` encode integer UTC epoch-second semantics even though their textual representations differ.
+4. For any one `apath`, the format can unambiguously order at most one logical state transition per second.
+
+One-second precision is intentional:
+
+1. It preserves the established `datetag` semantics and keeps both timestamp encodings semantically equivalent.
+2. It keeps object names compact, human-auditable, filename-safe, and straightforward to sort and recover with generic tools.
+3. It avoids introducing fractional formatting, variable precision, or an additional sequence field into every object name.
+4. It is sufficient for the original batch-backup model, in which one timestamp commonly identifies all changes observed during a run.
+
+Continuous writers remain conforming, but must choose how to handle multiple changes to one `apath` within a second. They may coalesce changes to the final observed state, delay an event until a distinct timestamp is available, or document that intermediate same-second states are not retained. A writer that must preserve and order every subsecond state requires a future format extension with additional precision or sequencing.
 
 ## Canonical Write Form
 

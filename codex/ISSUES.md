@@ -16,11 +16,11 @@ Scope: Static code/design review plus targeted prune follow-up changes/tests
   - `delete_rpath` now deletes all DB rows with matching `rpath` (shared-`rpath` reference model supported).
   - Regression tests added in `tests/test_prune.py` for both behaviors.
 - Still open from this issue list:
-  - #1, #2, #3, #4, #5, #6 below remain open at this time.
+  - #2, #3, #4, #5, #6 below remain open at this time.
 
 ## 1) High - Prune can mark files deleted in DB even when remote deletion fails
 
-Status: Open
+Status: Addressed (2026-10-28). Failed deletions retain database records and are excluded from published prune records; successful deletions are processed before reporting overall failure. Connection, permission, and missing-object failure regressions cover DB and snapshot behavior.
 
 ### What this represents
 
